@@ -1,0 +1,12 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/.vs/
+**/.vscode/
+**/.idea/
+.git/
+.scratch/
+docs/
+*.md
+*.sln
+tests/

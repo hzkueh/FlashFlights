@@ -1,0 +1,122 @@
+name: flashflights
+
+# Everything a reviewer needs: `docker compose up` and nothing else.
+# Deliberately no `depends_on: condition: service_healthy` gating on the app
+# services — they are supposed to retry their dependencies rather than rely on
+# start order, and this stack is where that gets proven.
+
+x-service-base: &service-base
+  restart: unless-stopped
+  environment: &service-env
+    ASPNETCORE_ENVIRONMENT: Development
+    RabbitMq__Host: rabbitmq
+    RabbitMq__Username: guest
+    RabbitMq__Password: guest
+  healthcheck:
+    test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/health"]
+    interval: 10s
+    timeout: 3s
+    retries: 6
+    start_period: 15s
+
+services:
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672" # management UI, guest/guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+
+  # Ordering alone needs PostgreSQL: its no-double-hold guarantee depends on
+  # real row-level locking, which SQLite cannot express (ADR-0001).
+  ordering-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: flashflights_ordering
+      POSTGRES_USER: flashflights
+      POSTGRES_PASSWORD: flashflights # local dev only
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flashflights -d flashflights_ordering"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - ordering-db-data:/var/lib/postgresql/data
+
+  catalog:
+    <<: *service-base
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PROJECT: FlashFlights.Catalog
+    environment:
+      <<: *service-env
+      ConnectionStrings__CatalogDb: Data Source=/data/catalog.db
+    volumes:
+      - catalog-data:/data
+    depends_on:
+      - rabbitmq
+
+  ordering:
+    <<: *service-base
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PROJECT: FlashFlights.Ordering
+    environment:
+      <<: *service-env
+      ConnectionStrings__OrderingDb: Host=ordering-db;Port=5432;Database=flashflights_ordering;Username=flashflights;Password=flashflights
+    depends_on:
+      - rabbitmq
+      - ordering-db
+
+  notifications:
+    <<: *service-base
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PROJECT: FlashFlights.Notifications
+    environment:
+      <<: *service-env
+      ConnectionStrings__NotificationsDb: Data Source=/data/notifications.db
+    volumes:
+      - notifications-data:/data
+    depends_on:
+      - rabbitmq
+
+  gateway:
+    <<: *service-base
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PROJECT: FlashFlights.Gateway
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ReverseProxy__Clusters__catalog__Destinations__primary__Address: http://catalog:8080/
+      ReverseProxy__Clusters__ordering__Destinations__primary__Address: http://ordering:8080/
+      ReverseProxy__Clusters__notifications__Destinations__primary__Address: http://notifications:8080/
+      Cors__AllowedOrigins__0: http://localhost:5173
+    depends_on:
+      - catalog
+      - ordering
+      - notifications
+
+volumes:
+  rabbitmq-data:
+  ordering-db-data:
+  catalog-data:
+  notifications-data:
