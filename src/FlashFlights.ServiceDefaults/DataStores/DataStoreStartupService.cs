@@ -5,14 +5,15 @@ using Microsoft.Extensions.Options;
 namespace FlashFlights.ServiceDefaults.DataStores;
 
 /// <summary>
-/// Retries the datastore on startup with capped exponential backoff instead of
-/// letting the process crash-loop when the container starts before its
-/// database does. Never throws: the service stays up, and
-/// <see cref="DataStoreHealthCheck"/> reports it not-ready until the store
-/// answers.
+/// Applies the service's migrations on startup, retrying with capped
+/// exponential backoff instead of letting the process crash-loop when the
+/// container starts before its database does. Never throws: the service stays
+/// up, and <see cref="DataStoreHealthCheck"/> reports it not-ready until the
+/// schema is in place.
 /// </summary>
 public sealed class DataStoreStartupService(
-    IDataStoreProbe probe,
+    IDataStoreMigrator migrator,
+    DataStoreReadiness readiness,
     IOptions<DataStoreRetryOptions> options,
     ILogger<DataStoreStartupService> logger) : BackgroundService
 {
@@ -25,9 +26,10 @@ public sealed class DataStoreStartupService(
         {
             try
             {
-                await probe.ConnectAsync(stoppingToken);
+                await migrator.MigrateAsync(stoppingToken);
+                readiness.MarkSchemaReady();
                 logger.LogInformation(
-                    "Datastore {DataStore} reachable after {Attempts} attempt(s)", probe.Name, attempt);
+                    "Datastore {DataStore} migrated after {Attempts} attempt(s)", migrator.Name, attempt);
                 return;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -38,8 +40,8 @@ public sealed class DataStoreStartupService(
             {
                 logger.LogWarning(
                     ex,
-                    "Datastore {DataStore} unreachable (attempt {Attempt}); retrying in {Delay}",
-                    probe.Name,
+                    "Datastore {DataStore} could not be migrated (attempt {Attempt}); retrying in {Delay}",
+                    migrator.Name,
                     attempt,
                     delay);
             }

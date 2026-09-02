@@ -1,6 +1,20 @@
+using FlashFlights.Gateway.Identity;
+using FlashFlights.ServiceDefaults;
+using FlashFlights.ServiceDefaults.DataStores;
+using Microsoft.EntityFrameworkCore;
+
 const string SpaCorsPolicy = "spa";
 
 var builder = WebApplication.CreateBuilder(args);
+
+// The gateway hosts the one shared user store — Identity is a lightweight
+// piece alongside the gateway, not a fourth microservice. It takes no part in
+// the bus, which is why the datastore registration is separate from the rest
+// of the service defaults.
+builder.Services.AddSingleton(new ServiceIdentity("gateway"));
+builder.AddFlashFlightsDataStore<FlashFlightsIdentityDbContext>(
+    "identity-sqlite",
+    options => options.UseSqlite(builder.Configuration.RequireConnectionString("IdentityDb")));
 
 builder.Services.AddReverseProxy()
     .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
@@ -20,8 +34,9 @@ var app = builder.Build();
 
 app.UseCors(SpaCorsPolicy);
 
-// The gateway's own liveness, distinct from the services it fronts.
-app.MapGet("/health", () => Results.Ok(new { service = "gateway", status = "Healthy" }));
+// The gateway's own health, distinct from the services it fronts. Mapped
+// before the proxy so these paths are answered here rather than forwarded.
+app.MapFlashFlightsHealth();
 
 app.MapReverseProxy();
 
