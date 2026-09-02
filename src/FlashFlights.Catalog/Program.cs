@@ -1,12 +1,16 @@
-using FlashFlights.Catalog.Infrastructure;
+using FlashFlights.Catalog.Persistence;
 using FlashFlights.Contracts;
 using FlashFlights.ServiceDefaults;
 using FlashFlights.ServiceDefaults.DataStores;
 using MassTransit;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddSingleton<IDataStoreProbe, SqliteDataStoreProbe>();
+builder.AddFlashFlightsDataStore<CatalogDbContext>(
+    "catalog-sqlite",
+    options => options.UseSqlite(builder.Configuration.RequireConnectionString("CatalogDb")));
+
 builder.AddFlashFlightsServiceDefaults("catalog");
 
 var app = builder.Build();

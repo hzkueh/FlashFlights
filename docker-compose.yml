@@ -106,10 +106,15 @@ services:
       - "8080:8080"
     environment:
       ASPNETCORE_ENVIRONMENT: Development
+      # The gateway hosts the one shared user store — Identity is a lightweight
+      # piece alongside it, not a fourth microservice.
+      ConnectionStrings__IdentityDb: Data Source=/data/identity.db
       ReverseProxy__Clusters__catalog__Destinations__primary__Address: http://catalog:8080/
       ReverseProxy__Clusters__ordering__Destinations__primary__Address: http://ordering:8080/
       ReverseProxy__Clusters__notifications__Destinations__primary__Address: http://notifications:8080/
       Cors__AllowedOrigins__0: http://localhost:5173
+    volumes:
+      - gateway-data:/data
     depends_on:
       - catalog
       - ordering
@@ -120,3 +125,4 @@ volumes:
   ordering-db-data:
   catalog-data:
   notifications-data:
+  gateway-data:

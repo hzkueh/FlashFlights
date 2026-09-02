@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 
@@ -23,11 +24,15 @@ public static class ServiceDefaultsExtensions
     /// <summary>Readiness — datastore and bus are both reachable.</summary>
     public const string ReadinessPath = "/health/ready";
 
-    private const string ReadyTag = "ready";
+    /// <summary>Health-check tag for the checks that gate <see cref="ReadinessPath"/>.</summary>
+    internal const string ReadyTag = "ready";
 
     /// <summary>
-    /// Registers bus and datastore plumbing. The caller must already have
-    /// registered its own <see cref="IDataStoreProbe"/>.
+    /// Registers the bus and the health endpoints. A service's own datastore is
+    /// registered separately via
+    /// <see cref="DataStoreExtensions.AddFlashFlightsDataStore{TContext}"/>, so
+    /// that the gateway — which owns the Identity store but consumes no events —
+    /// can have one without the other.
     /// </summary>
     /// <param name="builder">The host being configured.</param>
     /// <param name="serviceName">Reported by the health endpoints.</param>
@@ -37,10 +42,7 @@ public static class ServiceDefaultsExtensions
         string serviceName,
         Action<IBusRegistrationConfigurator>? configureBus = null)
     {
-        builder.Services.AddSingleton(new ServiceIdentity(serviceName));
-
-        builder.Services.Configure<DataStoreRetryOptions>(builder.Configuration.GetSection("DataStoreRetry"));
-        builder.Services.AddHostedService<DataStoreStartupService>();
+        builder.Services.TryAddSingleton(new ServiceIdentity(serviceName));
 
         // MassTransit registers its own "masstransit-bus" health check, and its
         // bus reconnects on its own, so the broker needs no retry loop here.
@@ -68,10 +70,6 @@ public static class ServiceDefaultsExtensions
                 cfg.ConfigureEndpoints(context);
             });
         });
-
-        builder.Services
-            .AddHealthChecks()
-            .AddCheck<DataStoreHealthCheck>("datastore", tags: [ReadyTag]);
 
         return builder;
     }

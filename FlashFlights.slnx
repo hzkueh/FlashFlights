@@ -9,6 +9,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/FlashFlights.Catalog.Tests/FlashFlights.Catalog.Tests.csproj" />
+    <Project Path="tests/FlashFlights.Gateway.Tests/FlashFlights.Gateway.Tests.csproj" />
     <Project Path="tests/FlashFlights.Notifications.Tests/FlashFlights.Notifications.Tests.csproj" />
     <Project Path="tests/FlashFlights.Ordering.Tests/FlashFlights.Ordering.Tests.csproj" />
   </Folder>

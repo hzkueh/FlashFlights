@@ -1,9 +1,10 @@
 namespace FlashFlights.ServiceDefaults.DataStores;
 
 /// <summary>
-/// A single attempt to reach the service's own datastore. Implemented per
-/// service because each service owns a different store — Ordering needs
-/// PostgreSQL for real row-level locking (ADR-0001), the others use SQLite.
+/// A single attempt to reach the service's own datastore, used by
+/// <see cref="DataStoreHealthCheck"/> to answer "is the store still there" on
+/// every readiness hit. Kept as an interface so the health check's behaviour
+/// can be tested against a store that fails on demand.
 /// </summary>
 public interface IDataStoreProbe
 {

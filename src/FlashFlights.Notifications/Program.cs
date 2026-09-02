@@ -1,11 +1,15 @@
-using FlashFlights.Notifications.Infrastructure;
+using FlashFlights.Notifications.Persistence;
 using FlashFlights.ServiceDefaults;
 using FlashFlights.ServiceDefaults.DataStores;
 using FlashFlights.ServiceDefaults.Wiring;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddSingleton<IDataStoreProbe, SqliteDataStoreProbe>();
+builder.AddFlashFlightsDataStore<NotificationsDbContext>(
+    "notifications-sqlite",
+    options => options.UseSqlite(builder.Configuration.RequireConnectionString("NotificationsDb")));
+
 builder.Services.AddSingleton<IPingLog, InMemoryPingLog>();
 builder.AddFlashFlightsServiceDefaults("notifications", bus => bus.AddConsumer<PingSentConsumer>());
 
