@@ -21,8 +21,14 @@ boundaries rather than within a single process.
 - SeatStatus is computed on read, never cached as a stored column, so a
   stale cache can never claim a seat is takeable when it isn't.
 - An unresolved Held past its TTL is treated as Available again without a
-  background job being required for correctness — a cleanup job only exists
-  to post the compensating Released record for auditability.
+  background job being required for correctness — the cleanup job posts the
+  compensating Released record for auditability.
+- That cleanup job is nonetheless load-bearing for browsing. Catalog's
+  SeatCounts learn of a silent expiry only from the Released movement the
+  sweep posts, so until it runs the counts and the seat map disagree about the
+  same Flight — the map reads live from Ordering and self-heals, the counts do
+  not. The sweep's interval is therefore bounded by how stale the counts may
+  be, not by audit latency alone.
 - Catalog's browsing view is an eventually-consistent projection over these
   events; Ordering never consults it when actually granting a Hold.
 - Ordering's datastore must support real row-level locking, so it is
