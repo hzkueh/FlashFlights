@@ -13,6 +13,7 @@
 - [ ] `ConfirmHold` appends `Confirmed` movements and produces a `Booking` with the Seats, User, and price paid; a simulated payment step always succeeds instantly.
 - [ ] A resolved Hold cannot be re-confirmed or re-held.
 - [ ] An unresolved Hold past its TTL (~2 min) computes back to Available on read **without** requiring the sweep to have run; the sweep posts the compensating `Released` movements for auditability.
+- [ ] The sweep runs on an interval well under the Hold TTL. It is load-bearing for browsing accuracy, not auditability alone — Catalog's SeatCounts learn of a silent expiry only from the `Released` movement the sweep posts (ADR-0001), so its interval bounds how long the list page's counts and the flight's own seat map may disagree.
 - [ ] Read-side expiry and the sweep read the **same clock source** and agree on the boundary — a Hold is never simultaneously "expired" to a reader and "live" to a confirm. Boundary case is covered by a test.
 - [ ] Sequential tests: hold → confirm → Booking; hold → expire → Seats Available again; conflict paths above.
 - [ ] Concurrency test fires N parallel `CreateHold` calls at the same Seat and asserts exactly one wins and the rest get a clean conflict.

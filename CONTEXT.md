@@ -36,6 +36,13 @@ from its latest SeatMovement (an unresolved Held past its TTL computes back
 to Available). Never a stored, editable field.
 _Avoid: State, SeatState_
 
+**SeatCounts**:
+The advisory per-Flight tally of how many of its Seats are Available, Held,
+and Confirmed, shown while browsing. Always trails the SeatMovements it is
+derived from, so it can disagree with the SeatStatus of the very Seats it
+counts — never the basis for granting a Hold.
+_Avoid: Availability, Inventory, Stock_
+
 **Hold**:
 A buyer's in-progress reservation on one or more specific Seats, created by
 posting Held SeatMovements for them. Carries an expiry (TTL). Resolves into

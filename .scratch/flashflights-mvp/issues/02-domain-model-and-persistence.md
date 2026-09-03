@@ -122,3 +122,28 @@ entrypoint was proven via a throwaway, uncommitted port override.
   not be ordered or compared on in SQL — do it in memory. Ordering's PostgreSQL
   has real `numeric(10,2)`.
 - The `_ping` endpoints from ticket 01 are still here; ticket 04 removes them.
+
+### Glossary gaps — resolved
+
+This ticket persisted two type names `CONTEXT.md` did not define. Both are now
+settled.
+
+- **`FlightSeatCounts` — was a real gap; `CONTEXT.md` now defines
+  **SeatCounts**.** The entry is written against **SeatStatus** on purpose: the
+  counts are advisory and can disagree with the SeatStatus of the very Seats
+  they count, so the definition says so rather than leaving a reader to assume
+  a tally of Seats agrees with the Seats. `_Avoid: Availability, Inventory,
+  Stock_` — "availability" in particular invites reading the projection as
+  authoritative, which is the exact confusion ADR-0001 exists to prevent.
+- **`SeatMovementType` — not a gap.** `CONTEXT.md`'s **SeatMovement** entry
+  already fixes the vocabulary ("Type is one of **Held**, **Released**,
+  **Confirmed**"), so the enum names an attribute of a defined concept, the
+  same shape the glossary already sanctions for `SeatNumber` ("fine as an
+  attribute, not the entity"). No entry added; recorded so the absence reads as
+  deliberate.
+
+An earlier version of this note also called `SeatsHeld` / `SeatsReleased` /
+`SeatsConfirmed` unglossed and due for settling. That was wrong: `spec.md`
+fixes them under **Event contracts**, and tickets 05 and 06 already name them.
+They are integration contracts rather than glossary terms, and no `CONTEXT.md`
+entry is wanted for them.
