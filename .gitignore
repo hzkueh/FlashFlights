@@ -7,9 +7,10 @@ obj/
 *.suo
 .vs/
 
-## Editors
+## Editors and agent tooling
 .idea/
 .vscode/
+.claude/
 
 ## Local data
 data/
