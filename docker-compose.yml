@@ -95,6 +95,20 @@ services:
     depends_on:
       - rabbitmq
 
+  # The SPA: built to static files and served by nginx, reached through the
+  # gateway rather than published on its own port, so the whole system has one
+  # entry point and the browser is same-origin with the API.
+  web:
+    restart: unless-stopped
+    build:
+      context: ./web
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+
   gateway:
     <<: *service-base
     build:
@@ -112,6 +126,9 @@ services:
       ReverseProxy__Clusters__catalog__Destinations__primary__Address: http://catalog:8080/
       ReverseProxy__Clusters__ordering__Destinations__primary__Address: http://ordering:8080/
       ReverseProxy__Clusters__notifications__Destinations__primary__Address: http://notifications:8080/
+      ReverseProxy__Clusters__web__Destinations__primary__Address: http://web:8080/
+      # The SPA is same-origin behind the gateway here, so this only matters for
+      # someone running `npm run dev` against this stack without the Vite proxy.
       Cors__AllowedOrigins__0: http://localhost:5173
     volumes:
       - gateway-data:/data
@@ -119,6 +136,7 @@ services:
       - catalog
       - ordering
       - notifications
+      - web
 
 volumes:
   rabbitmq-data:
