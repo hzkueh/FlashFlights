@@ -1,24 +1,11 @@
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { App } from '@/App'
-import { ThemeProvider } from '@/hooks/use-theme'
-import { reachable, stubFetch, unreachable } from '@/test/backend'
+import { reachable, unreachable } from '@/test/backend'
 import { stubPrefersDark } from '@/test/match-media'
-
-function renderApp(fetchImpl: typeof fetch, route = '/') {
-  stubFetch(fetchImpl)
-
-  return render(
-    <ThemeProvider>
-      <MemoryRouter initialEntries={[route]}>
-        <App />
-      </MemoryRouter>
-    </ThemeProvider>,
-  )
-}
+import { renderApp } from '@/test/render-app'
+import { SIGNED_IN_EMAIL, signedInGateway, storeSession } from '@/test/session'
 
 beforeEach(() => {
   localStorage.clear()
@@ -73,5 +60,22 @@ describe('App shell', () => {
     renderApp(reachable, '/nowhere')
 
     expect(await screen.findByRole('heading', { name: /not found/i })).toBeInTheDocument()
+  })
+
+  /** Browsing stays unauthenticated, so the header invites rather than gates. */
+  it('offers the way in while signed out', () => {
+    renderApp(reachable)
+
+    expect(screen.getByRole('link', { name: /sign in/i })).toHaveAttribute('href', '/login')
+    expect(screen.getByRole('link', { name: /register/i })).toHaveAttribute('href', '/register')
+  })
+
+  it('names the signed-in User and offers the way out', () => {
+    storeSession()
+
+    renderApp(signedInGateway())
+
+    expect(screen.getByText(SIGNED_IN_EMAIL)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /sign out/i })).toBeInTheDocument()
   })
 })

@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router'
 
 import { BackendStatusBadge } from '@/components/backend-status-badge'
+import { SessionMenu } from '@/components/session-menu'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { cn } from '@/lib/utils'
 
@@ -44,7 +45,8 @@ export function AppShell() {
             ))}
           </nav>
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-3">
+            <SessionMenu />
             <BackendStatusBadge />
             <ThemeToggle />
           </div>

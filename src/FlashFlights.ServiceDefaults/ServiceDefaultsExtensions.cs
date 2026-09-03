@@ -1,4 +1,5 @@
 using System.Text.Json;
+using FlashFlights.ServiceDefaults.Authentication;
 using FlashFlights.ServiceDefaults.DataStores;
 using MassTransit;
 using Microsoft.AspNetCore.Builder;
@@ -28,7 +29,7 @@ public static class ServiceDefaultsExtensions
     internal const string ReadyTag = "ready";
 
     /// <summary>
-    /// Registers the bus and the health endpoints. A service's own datastore is
+    /// Registers the bus, JWT validation, and the health endpoints. A service's own datastore is
     /// registered separately via
     /// <see cref="DataStoreExtensions.AddFlashFlightsDataStore{TContext}"/>, so
     /// that the gateway — which owns the Identity store but consumes no events —
@@ -43,6 +44,12 @@ public static class ServiceDefaultsExtensions
         Action<IBusRegistrationConfigurator>? configureBus = null)
     {
         builder.Services.TryAddSingleton(new ServiceIdentity(serviceName));
+
+        // Every service behind the gateway validates tokens against the shared
+        // signing config, and does so by taking the service defaults — so a new
+        // service cannot end up with endpoints it believes are protected and a
+        // host that never checks a token.
+        builder.AddFlashFlightsJwtAuthentication();
 
         // MassTransit registers its own "masstransit-bus" health check, and its
         // bus reconnects on its own, so the broker needs no retry loop here.

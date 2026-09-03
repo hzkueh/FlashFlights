@@ -5,6 +5,12 @@ name: flashflights
 # services — they are supposed to retry their dependencies rather than rely on
 # start order, and this stack is where that gets proven.
 
+# One symmetric key for the whole stack: the gateway signs tokens with it and
+# Catalog, Ordering, and Notifications validate against it. That shared key is
+# what lets auth be a lightweight piece alongside the gateway instead of a
+# fourth microservice. Local demo value, overridable per environment.
+x-jwt-signing-key: &jwt-signing-key ${FLASHFLIGHTS_JWT_SIGNING_KEY:-flashflights-local-development-signing-key-not-for-production}
+
 x-service-base: &service-base
   restart: unless-stopped
   environment: &service-env
@@ -12,6 +18,7 @@ x-service-base: &service-base
     RabbitMq__Host: rabbitmq
     RabbitMq__Username: guest
     RabbitMq__Password: guest
+    Jwt__SigningKey: *jwt-signing-key
   healthcheck:
     test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/health"]
     interval: 10s
@@ -121,8 +128,10 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       # The gateway hosts the one shared user store — Identity is a lightweight
-      # piece alongside it, not a fourth microservice.
+      # piece alongside it, not a fourth microservice — and is the only host
+      # that signs with this key rather than only validating against it.
       ConnectionStrings__IdentityDb: Data Source=/data/identity.db
+      Jwt__SigningKey: *jwt-signing-key
       ReverseProxy__Clusters__catalog__Destinations__primary__Address: http://catalog:8080/
       ReverseProxy__Clusters__ordering__Destinations__primary__Address: http://ordering:8080/
       ReverseProxy__Clusters__notifications__Destinations__primary__Address: http://notifications:8080/
