@@ -6,9 +6,11 @@ import { cn } from '@/lib/utils'
 
 /** The screens from the spec, in the order a buyer meets them. */
 const NAV = [
+  // `end` only matters for '/', which would otherwise match every route — but
+  // every entry carries it so the type stays uniform.
   { to: '/', label: 'Flights', end: true },
-  { to: '/bookings', label: 'Bookings' },
-  { to: '/notifications', label: 'Notifications' },
+  { to: '/bookings', label: 'Bookings', end: false },
+  { to: '/notifications', label: 'Notifications', end: false },
 ] as const
 
 /**
@@ -29,7 +31,7 @@ export function AppShell() {
               <NavLink
                 key={item.to}
                 to={item.to}
-                end={'end' in item ? item.end : false}
+                end={item.end}
                 className={({ isActive }) =>
                   cn(
                     'text-muted-foreground transition-colors hover:text-foreground',

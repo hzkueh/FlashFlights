@@ -19,8 +19,12 @@ builder.AddFlashFlightsDataStore<FlashFlightsIdentityDbContext>(
 builder.Services.AddReverseProxy()
     .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
 
-// Named origins rather than AllowAnyOrigin: the SPA will hold a JWT and open a
-// SignalR connection, and credentialed requests forbid the wildcard.
+// Every supported way of running FlashFlights puts the browser on the gateway's
+// own origin, so this policy is not load-bearing today (ticket 03 settled that).
+// It is kept as the one switch that lets a separately hosted SPA talk to this
+// gateway without a code change — named origins rather than AllowAnyOrigin,
+// because such a client would hold a JWT and open a SignalR connection, and
+// credentialed requests forbid the wildcard.
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
     ?? ["http://localhost:5173"];
 

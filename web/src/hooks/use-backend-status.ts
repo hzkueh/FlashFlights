@@ -10,14 +10,14 @@ export interface BackendState {
 }
 
 /** Slow enough to be a heartbeat rather than traffic; fast enough to notice a restart. */
-const DEFAULT_POLL_MS = 15_000
+const POLL_MS = 15_000
 
 /**
- * Polls so the header reflects the backend going away, not just whether it was
- * there when the page loaded — which is the state a reviewer running
+ * Polls so the header reflects the watched service going away, not just whether
+ * it was there when the page loaded — which is the state a reviewer running
  * `docker compose stop catalog` actually wants to see.
  */
-export function useBackendStatus(pollMs: number = DEFAULT_POLL_MS): BackendState {
+export function useBackendStatus(): BackendState {
   const [state, setState] = useState<BackendState>({ status: 'checking', health: null })
 
   useEffect(() => {
@@ -35,13 +35,13 @@ export function useBackendStatus(pollMs: number = DEFAULT_POLL_MS): BackendState
     }
 
     void check()
-    const timer = setInterval(() => void check(), pollMs)
+    const timer = setInterval(() => void check(), POLL_MS)
 
     return () => {
       controller.abort()
       clearInterval(timer)
     }
-  }, [pollMs])
+  }, [])
 
   return state
 }

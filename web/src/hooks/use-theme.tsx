@@ -39,6 +39,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   return <ThemeContext value={value}>{children}</ThemeContext>
 }
 
+/** Throws outside a {@link ThemeProvider} rather than silently defaulting to light. */
 export function useTheme(): ThemeContextValue {
   const value = use(ThemeContext)
 

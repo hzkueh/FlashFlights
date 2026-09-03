@@ -5,14 +5,20 @@
  * `vite.config.ts`), so there is deliberately no base-URL setting to get wrong.
  */
 
+/** The service the connection indicator watches, named wherever it is reported. */
+export const WATCHED_SERVICE = 'Catalog'
+
 /**
- * Readiness of a service *through* the gateway, rather than the gateway's own.
- * Two reasons: the gateway also serves this SPA, so a gateway that cannot
- * answer cannot deliver the page asking either — the indicator would never
- * legitimately read disconnected. And readiness, not liveness: liveness is
- * check-free by design (a service that started before its database still
- * answers 200), so it would report connected for a service that can serve
- * nothing. Catalog is the service this SPA reaches for first.
+ * Readiness of one service *through* the gateway, rather than the gateway's
+ * own. One call this way covers gateway routing, a real service, its datastore
+ * and the bus; the gateway's own readiness covers only the Identity store it
+ * happens to host, and would read healthy with all three services down.
+ *
+ * Readiness, not liveness: liveness is check-free by design, so it answers 200
+ * for a service that started before its database and can serve nothing.
+ *
+ * It watches one service, not all three — so this reports Catalog, not "the
+ * backend", and every label around it says so.
  */
 export const BACKEND_READINESS_PATH = '/api/catalog/health/ready'
 
@@ -23,9 +29,9 @@ export interface BackendHealth {
 }
 
 /**
- * Resolves with the backend's health report, and rejects for every way it can
- * be unreachable — connection refused, a non-2xx status, or a body that is not
- * the report. Callers turn a rejection into "disconnected".
+ * Resolves with the watched service's health report, and rejects for every way
+ * it can be unreachable — connection refused, a non-2xx status, or a body that
+ * is not the report. Callers turn a rejection into "disconnected".
  */
 export async function fetchBackendHealth(signal?: AbortSignal): Promise<BackendHealth> {
   const response = await fetch(BACKEND_READINESS_PATH, { signal, headers: { accept: 'application/json' } })
@@ -36,5 +42,5 @@ export async function fetchBackendHealth(signal?: AbortSignal): Promise<BackendH
 
   const report = (await response.json()) as Partial<BackendHealth>
 
-  return { service: report.service ?? 'backend', status: report.status ?? 'Unknown' }
+  return { service: report.service ?? WATCHED_SERVICE, status: report.status ?? 'Unknown' }
 }

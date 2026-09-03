@@ -32,20 +32,33 @@ table against the `appsettings.json` the gateway actually ships.
 **Same-origin everywhere, so there is no base-URL setting.** Every call the
 SPA makes is a root-relative path. In compose that is the gateway; under
 `npm run dev` a Vite proxy sends `/api` to `localhost:8080` and reproduces the
-same shape. This settles ticket 01's open question about the frontend's
-origin: `Cors:AllowedOrigins` is now belt-and-braces — nothing in either
-supported way of running the app needs it — and it is kept only for someone
-running the SPA on a third origin.
+same shape; running everything from `dotnet run` works too, because the
+gateway's `web` cluster defaults to the Vite dev server. `web/README.md`
+documents all three.
+
+This closes ticket 01's handoff — "revisit when ticket 03 settles the
+frontend's actual origin" — with a decision, not a deferral. The origin is
+same-origin in every supported mode, so `Cors:AllowedOrigins` is not
+load-bearing today. It is kept deliberately, as the one switch that lets a
+separately hosted SPA reach this gateway without a code change; deleting it
+would be a gateway behaviour change this ticket was not asked to make, and
+ticket 04's credentialed requests are the likeliest reason to want it back.
 
 **Three things worth knowing:**
 
-1. *The connection indicator deliberately does not check the gateway's own
-   `/health/ready`.* In this topology the gateway also serves the SPA, so a
-   gateway that cannot answer cannot deliver the page that would ask — the
-   badge could never legitimately read "Disconnected". It calls
-   `/api/catalog/health/ready` instead, which exercises gateway routing, a real
-   service, its datastore and the bus, and visibly flips on
-   `docker compose stop catalog`.
+1. *The connection indicator checks a service through the gateway, not the
+   gateway's own `/health/ready`.* This is a departure from the criterion's
+   literal words, taken because the gateway's own readiness covers only the
+   Identity store it happens to host — it would read healthy with all three
+   services down. `/api/catalog/health/ready` covers gateway routing, a real
+   service, its datastore and the bus in one call, and visibly flips on
+   `docker compose stop catalog`. Ticket 01's own manual-verification section
+   uses that same URL.
+
+   The cost is that it watches **one** service, so `docker compose stop
+   ordering` leaves it reading Connected. Every label around it therefore names
+   Catalog rather than claiming to speak for "the backend", and a test asserts
+   that naming. Widening it to all three is noted as a follow-up.
 2. *nginx needs `listen [::]:8080` as well as `listen 8080`.* `localhost`
    resolves to `::1` inside the container, so an IPv4-only listener serves the
    gateway fine while failing its own healthcheck — the container reports
@@ -61,16 +74,22 @@ healthy) are unit-tested; `ThemeProvider` and the app shell are covered through
 the rendered DOM. Per the spec, frontend tests are secondary — these cover the
 two pieces of real logic this ticket adds, not the placeholder pages.
 
-**Deliberately not done here:** any actual screen. Every route in the spec
-exists and renders a placeholder naming the ticket that fills it in, so later
-tickets replace a page rather than also wiring routing.
+**Deliberately not done here:** any actual screen. Every screen the spec names
+has a route rendering a placeholder that names the issue filling it in — with
+one exception: the Hold/checkout flow has no route, because ticket 07 decides
+whether it is a page of its own or a step on the seat map, and inventing a URL
+now would be a shape that ticket has to undo.
+
+Placeholders say "Arrives in issue NN", not "ticket NN": CONTEXT.md rules
+"Ticket" out of user-visible copy, since in an airline app it reads as the
+boarding document rather than a work item.
 
 ### Follow-ups for later tickets
 
-- Ticket 04 should delete the `_ping` endpoints (ticket 01's follow-up) and
-  decide whether `Cors:AllowedOrigins` survives at all now that nothing
-  supported is cross-origin.
-- `useBackendStatus` polls one service. If ticket 06 or 08 wants per-service
-  status in the header, that hook is the place to widen.
+- Ticket 04 should delete the `_ping` endpoints (ticket 01's follow-up).
+- `useBackendStatus` watches Catalog alone, so the header cannot show a stopped
+  Ordering or Notifications. If ticket 06 or 08 wants per-service status, that
+  hook is the place to widen — the badge already renders from a single
+  status-keyed table.
 - The SignalR connection in ticket 08 goes through the same origin; the Vite
   proxy already forwards websockets on `/api`.

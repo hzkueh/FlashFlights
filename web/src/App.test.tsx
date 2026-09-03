@@ -5,10 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { App } from '@/App'
 import { ThemeProvider } from '@/hooks/use-theme'
-import { stubPrefersDark } from '@/test/matchMedia'
+import { reachable, stubFetch, unreachable } from '@/test/backend'
+import { stubPrefersDark } from '@/test/match-media'
 
 function renderApp(fetchImpl: typeof fetch, route = '/') {
-  vi.stubGlobal('fetch', vi.fn(fetchImpl))
+  stubFetch(fetchImpl)
 
   return render(
     <ThemeProvider>
@@ -17,13 +18,6 @@ function renderApp(fetchImpl: typeof fetch, route = '/') {
       </MemoryRouter>
     </ThemeProvider>,
   )
-}
-
-const reachable: typeof fetch = async () =>
-  Response.json({ service: 'catalog', status: 'Healthy', checks: {} })
-
-const unreachable: typeof fetch = async () => {
-  throw new TypeError('Failed to fetch')
 }
 
 beforeEach(() => {
@@ -35,16 +29,23 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('App shell', () => {
-  it('reports the backend as connected once it answers through the gateway', async () => {
+  it('reports connected once the watched service answers through the gateway', async () => {
     renderApp(reachable)
 
     expect(await screen.findByRole('status')).toHaveTextContent(/connected/i)
   })
 
-  it('reports the backend as disconnected when it cannot be reached', async () => {
+  it('reports disconnected when the watched service cannot be reached', async () => {
     renderApp(unreachable)
 
     expect(await screen.findByRole('status')).toHaveTextContent(/disconnected/i)
+  })
+
+  /** The badge measures one service, so it must not claim to speak for the backend. */
+  it('names the service it watched rather than the backend as a whole', async () => {
+    renderApp(unreachable)
+
+    expect(await screen.findByRole('status')).toHaveAttribute('title', expect.stringMatching(/catalog/i))
   })
 
   it('toggles the theme from the header', async () => {
@@ -56,10 +57,16 @@ describe('App shell', () => {
     expect(screen.getByRole('button', { name: /switch to light theme/i })).toBeInTheDocument()
   })
 
-  it('routes to the pages later tickets fill in', async () => {
-    renderApp(reachable, '/bookings')
+  it.each([
+    ['/bookings', /bookings/i],
+    ['/notifications', /notifications/i],
+    ['/login', /sign in/i],
+    ['/register', /register/i],
+    ['/flights/abc', /flight/i],
+  ])('routes %s to the page later issues fill in', async (route, heading) => {
+    renderApp(reachable, route)
 
-    expect(await screen.findByRole('heading', { name: /bookings/i })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: heading })).toBeInTheDocument()
   })
 
   it('shows a not-found page for an unknown route', async () => {

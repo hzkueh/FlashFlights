@@ -6,15 +6,19 @@ domain language the screens are named after.
 
 ## Running it
 
-The SPA is same-origin with the gateway everywhere it runs, so nothing here
-carries a backend URL:
+The browser is always same-origin with the gateway, so nothing here carries a
+backend URL — every call the SPA makes is a root-relative path:
 
-- **In the compose stack** — `docker compose up` from the repo root, then
+- **The whole stack in Docker** — `docker compose up` from the repo root, then
   <http://localhost:8080>. The gateway proxies `/` to this app's nginx
   container and `/api/*` to the services.
-- **In dev** — `npm run dev`, then <http://localhost:5173>. Vite proxies
-  `/api` and `/health` to the gateway on `localhost:8080`
-  (`VITE_GATEWAY_ORIGIN` overrides that target).
+- **Frontend in dev, backend in Docker** — `npm run dev`, then
+  <http://localhost:5173>. Vite proxies `/api` (websockets included) to the
+  gateway on `localhost:8080`; `VITE_GATEWAY_ORIGIN` overrides that target.
+- **Everything from `dotnet run`, no Docker** — start the services and the
+  gateway locally, run `npm run dev`, and open <http://localhost:8080>. The
+  gateway's own `appsettings.json` points its `web` cluster at the Vite dev
+  server, so it fronts the SPA the same way it does in compose.
 
 ## Scripts
 
@@ -34,7 +38,8 @@ src/
 ├── components/      app shell, header widgets, and shadcn/ui in components/ui
 ├── hooks/           theme and backend-status state
 ├── lib/             theme resolution and the gateway client
-└── routes/          one file per screen
+├── routes/          one file per screen
+└── test/            shared stubs for the suites above
 ```
 
 Adding a shadcn component: `npx shadcn@latest add <name>`.

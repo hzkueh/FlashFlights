@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ThemeProvider, useTheme } from '@/hooks/use-theme'
 import { THEME_STORAGE_KEY } from '@/lib/theme'
-import { stubPrefersDark } from '@/test/matchMedia'
+import { stubPrefersDark } from '@/test/match-media'
 
 function ThemeProbe() {
   const { theme, toggleTheme } = useTheme()
