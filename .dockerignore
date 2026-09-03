@@ -10,3 +10,6 @@ docs/
 *.md
 *.sln
 tests/
+# The SPA has its own build context (web/Dockerfile); the .NET image never
+# reads it, and sending it would rebuild every service on a frontend change.
+web/

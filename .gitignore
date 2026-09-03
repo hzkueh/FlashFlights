@@ -7,9 +7,10 @@ obj/
 *.suo
 .vs/
 
-## Editors
+## Editors and agent tooling
 .idea/
 .vscode/
+.claude/
 
 ## Local data
 data/
@@ -17,6 +18,6 @@ data/
 *.db-shm
 *.db-wal
 
-## Node (frontend lands in ticket 03)
+## Node (web/)
 node_modules/
 dist/
