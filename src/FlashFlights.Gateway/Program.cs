@@ -1,5 +1,6 @@
 using FlashFlights.Gateway.Identity;
 using FlashFlights.ServiceDefaults;
+using FlashFlights.ServiceDefaults.Authentication;
 using FlashFlights.ServiceDefaults.DataStores;
 using Microsoft.EntityFrameworkCore;
 
@@ -15,6 +16,18 @@ builder.Services.AddSingleton(new ServiceIdentity("gateway"));
 builder.AddFlashFlightsDataStore<FlashFlightsIdentityDbContext>(
     "identity-sqlite",
     options => options.UseSqlite(builder.Configuration.RequireConnectionString("IdentityDb")));
+
+// Identity itself, plus the token issuance that comes with owning the user
+// store: the gateway is the only issuer in the system, and the services only
+// ever validate.
+builder.AddFlashFlightsIdentity();
+
+// And validation, which the gateway needs for /api/auth/me. Called here rather
+// than folded into the line above, so moving the user store elsewhere one day
+// cannot quietly take the gateway's ability to reject a token with it. The
+// three services get this from AddFlashFlightsServiceDefaults instead, which
+// the gateway does not take: it plays no part in the bus.
+builder.AddFlashFlightsJwtAuthentication();
 
 builder.Services.AddReverseProxy()
     .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
@@ -41,6 +54,10 @@ app.UseCors(SpaCorsPolicy);
 // The gateway's own health, distinct from the services it fronts. Mapped
 // before the proxy so these paths are answered here rather than forwarded.
 app.MapFlashFlightsHealth();
+
+// Answered here rather than forwarded: the one shared user store is hosted
+// alongside the gateway, so register and login live here too.
+app.MapFlashFlightsAuth();
 
 app.MapReverseProxy();
 

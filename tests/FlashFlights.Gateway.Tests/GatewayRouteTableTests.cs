@@ -1,3 +1,4 @@
+using FlashFlights.Gateway.Identity;
 using Microsoft.Extensions.Configuration;
 using Yarp.ReverseProxy.Configuration;
 
@@ -57,6 +58,27 @@ public class GatewayRouteTableTests
         Assert.All(
             Routes.Where(route => route.RouteId != "web"),
             route => Assert.True((route.Order ?? 0) < web.Order));
+    }
+
+    /// <summary>
+    /// Auth is a lightweight piece hosted alongside the gateway, not a fourth
+    /// microservice, so <c>/api/auth</c> is answered here — by an endpoint the
+    /// gateway maps itself, at the default order of zero.
+    ///
+    /// Routing picks by <c>Order</c> first and only then by how specific the
+    /// pattern is, so a proxy route captures register and login two ways: by
+    /// claiming that prefix, or by ordering itself ahead of everything the
+    /// gateway maps. Both are asserted; neither would fail loudly, because a
+    /// service that has no user store would answer 404 rather than complain.
+    /// </summary>
+    [Fact]
+    public void No_proxy_route_can_capture_the_paths_the_gateway_answers_itself()
+    {
+        Assert.All(Routes, route =>
+        {
+            Assert.False(route.Match.Path?.StartsWith(AuthEndpoints.BasePath, StringComparison.Ordinal));
+            Assert.True((route.Order ?? 0) >= 0, $"Route '{route.RouteId}' is ordered ahead of the gateway's own endpoints.");
+        });
     }
 
     /// <summary>

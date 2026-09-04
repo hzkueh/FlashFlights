@@ -5,7 +5,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- The auth suites stand up a real host and drive it over HTTP, because a
+         401 is decided by middleware rather than by the handler under test. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />

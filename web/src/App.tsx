@@ -1,8 +1,10 @@
 import { Route, Routes } from 'react-router'
 
 import { AppShell } from '@/components/app-shell'
+import { LoginPage } from '@/routes/login-page'
 import { NotFoundPage } from '@/routes/not-found-page'
 import { PlaceholderPage } from '@/routes/placeholder-page'
+import { RegisterPage } from '@/routes/register-page'
 
 /**
  * The route table. Issue 03 ships the shell and the routes; the pages
@@ -29,8 +31,8 @@ export function App() {
           path="notifications"
           element={<PlaceholderPage title="Notifications" issue="09 — watch and notify" />}
         />
-        <Route path="login" element={<PlaceholderPage title="Sign in" issue="04 — auth" />} />
-        <Route path="register" element={<PlaceholderPage title="Register" issue="04 — auth" />} />
+        <Route path="login" element={<LoginPage />} />
+        <Route path="register" element={<RegisterPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
