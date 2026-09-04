@@ -28,6 +28,10 @@
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
     <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="10.0.11" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <!-- The concurrency proof needs a real PostgreSQL with row-level locking, so
+         it runs against a throwaway container rather than an in-memory provider
+         or SQLite, which could not stage the race at all (ADR-0001). -->
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.6.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
   </ItemGroup>
