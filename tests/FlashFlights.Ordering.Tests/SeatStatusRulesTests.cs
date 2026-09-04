@@ -64,9 +64,9 @@ public class SeatStatusRulesTests
     }
 
     [Theory]
-    [InlineData(-1, false)] // TTL still ahead: live
-    [InlineData(0, true)]   // exactly at TTL: expired (inclusive boundary)
-    [InlineData(1, true)]   // past TTL: expired
+    [InlineData(1, false)]  // expiry still one second ahead: live
+    [InlineData(0, true)]   // expiry is exactly now: expired (inclusive boundary)
+    [InlineData(-1, true)]  // expiry one second in the past: expired
     public void Has_expired_is_inclusive_at_the_boundary(int expiresOffsetSeconds, bool expected)
     {
         var expiresAt = Now.AddSeconds(expiresOffsetSeconds);

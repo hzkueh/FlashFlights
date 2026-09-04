@@ -102,15 +102,27 @@ public sealed class HoldService(
     }
 
     /// <summary>
-    /// NAIVE, UNLOCKED — committed on purpose so the concurrency test can be seen
-    /// failing before it is fixed (ticket 05). The enclosing transaction is not
-    /// enough on its own: under READ COMMITTED two concurrent callers both read a
-    /// Seat with no live movement, both append Held, and both commit — a double
-    /// hold. The fix is to lock the Seat rows here so the second caller blocks
-    /// until the first has committed and then sees its Held movement.
+    /// Takes a row lock over the requested Seats for the life of the transaction
+    /// — the one line the whole no-double-hold guarantee rests on. A concurrent
+    /// CreateHold for any of the same Seats blocks here until this transaction
+    /// commits or rolls back, then re-reads the now-current ledger and sees the
+    /// Held movement this one wrote, so it loses cleanly instead of granting a
+    /// second Hold. The enclosing transaction alone does not achieve this: under
+    /// READ COMMITTED, unlocked readers never see each other (this is exactly
+    /// what the concurrency test catches when the lock is removed).
+    ///
+    /// The rows are locked in a fixed order (by Id) so two requests for
+    /// overlapping Seat sets cannot deadlock by grabbing them in opposite
+    /// orders. The SELECT's rows are discarded — it is run only for its locks.
     /// </summary>
-    private Task LockSeatsAsync(IReadOnlyList<Guid> seatIds, CancellationToken cancellationToken) =>
-        Task.CompletedTask;
+    private Task LockSeatsAsync(IReadOnlyList<Guid> seatIds, CancellationToken cancellationToken)
+    {
+        var ids = seatIds.ToArray();
+
+        return db.Database.ExecuteSqlInterpolatedAsync(
+            $"""SELECT "Id" FROM "Seats" WHERE "Id" = ANY({ids}) ORDER BY "Id" FOR UPDATE""",
+            cancellationToken);
+    }
 
     private async Task<Dictionary<Guid, LatestMovement>> LatestMovementsAsync(
         IReadOnlyList<Guid> seatIds,
