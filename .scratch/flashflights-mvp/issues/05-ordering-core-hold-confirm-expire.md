@@ -10,6 +10,8 @@
 - [ ] Accepts a caller-supplied user id — does **not** depend on ticket 04, so it can be built in parallel with a stub id.
 - [ ] `CreateHold` appends `Held` SeatMovements inside a single row-locked transaction; SeatStatus is computed from movements, never read from a stored column.
 - [ ] `CreateHold` on an already-Held or Confirmed Seat fails cleanly and names the conflicting Seats — never a partial success.
+- [ ] `CreateHold` refuses a **malformed** request before it touches the ledger — empty `seatIds`, the same Seat twice, ids that are not Seats of the given `flightId` — and answers 400 problem-details keyed by field, the shape ticket 04 established. Distinct from the 409 above: a conflict means the request was well-formed and lost, and the SPA has to tell the two apart to know whether retrying could ever help.
+- [ ] Ordering does **not** check that the Flight or the User exists. Catalog owns Flights and the Identity store owns Users; both ids are cross-service references, not FKs (`Hold.FlightId`, `Hold.UserId`). Matching each Seat against the supplied `flightId` is the strongest statement Ordering can make from its own data, and is what stops a caller holding Seats under the wrong Flight.
 - [ ] `ConfirmHold` appends `Confirmed` movements and produces a `Booking` with the Seats, User, and price paid; a simulated payment step always succeeds instantly.
 - [ ] A resolved Hold cannot be re-confirmed or re-held.
 - [ ] An unresolved Hold past its TTL (~2 min) computes back to Available on read **without** requiring the sweep to have run; the sweep posts the compensating `Released` movements for auditability.

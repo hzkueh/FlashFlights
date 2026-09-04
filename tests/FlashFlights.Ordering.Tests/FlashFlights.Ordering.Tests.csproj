@@ -2,12 +2,19 @@
 
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <!-- NU1903: SSH.NET arrives transitively via Testcontainers, which uses it
+         only to reach a Docker daemon over SSH. These tests reach a local daemon,
+         so that code path is never taken; the advisory does not apply to how the
+         package is used here. -->
+    <NoWarn>$(NoWarn);NU1903</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" />
     <PackageReference Include="MassTransit.TestFramework" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
