@@ -137,6 +137,21 @@ public class HoldServiceTests(OrderingDatabaseFixture fixture)
         Assert.Contains(HoldService.SeatIdsField, malformed.Errors.Keys);
     }
 
+    [Fact]
+    public async Task Rejects_a_negative_price_as_malformed()
+    {
+        await using var db = fixture.NewDbContext();
+        var flightId = Guid.NewGuid();
+        var seatIds = await OrderingTestData.SeedFlightWithSeatsAsync(db, flightId, count: 1);
+
+        var result = await OrderingTestData
+            .HoldServiceFor(db, new TestClock(Now))
+            .CreateHoldAsync(new CreateHoldRequest(flightId, seatIds, Guid.NewGuid(), PricePerSeat: -1m));
+
+        var malformed = Assert.IsType<CreateHoldResult.Malformed>(result);
+        Assert.Contains(HoldService.PricePerSeatField, malformed.Errors.Keys);
+    }
+
     /// <summary>
     /// The read side heals itself: once a Hold's TTL passes, its Seat computes
     /// back to Available and can be held again — no sweep required (ADR-0001).

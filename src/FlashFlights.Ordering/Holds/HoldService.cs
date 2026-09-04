@@ -17,8 +17,11 @@ public sealed class HoldService(
     TimeProvider clock,
     IOptions<HoldOptions> options) : IHoldService
 {
-    /// <summary>The field a malformed request's errors are keyed by — the SPA's seat picker owns it.</summary>
+    /// <summary>The field a malformed request's seat errors are keyed by — the SPA's seat picker owns it.</summary>
     public const string SeatIdsField = "seatIds";
+
+    /// <summary>The field a malformed price is keyed by, matching the request body's own name.</summary>
+    public const string PricePerSeatField = "pricePerSeat";
 
     private readonly TimeSpan _ttl = options.Value.Ttl;
 
@@ -28,7 +31,7 @@ public sealed class HoldService(
     {
         // Malformed before the ledger is touched (400, not 409): a shape error is
         // the caller's to fix, and retrying the same request cannot help.
-        if (ValidateShape(request.SeatIds) is { } shapeErrors)
+        if (ValidateRequest(request) is { } shapeErrors)
         {
             return new CreateHoldResult.Malformed(shapeErrors);
         }
@@ -161,23 +164,42 @@ public sealed class HoldService(
     private static LatestMovement? LatestOn(IReadOnlyDictionary<Guid, LatestMovement> latest, Guid seatId) =>
         latest.TryGetValue(seatId, out var movement) ? movement : null;
 
-    private static IReadOnlyDictionary<string, string[]>? ValidateShape(IReadOnlyList<Guid> seatIds)
+    private static IReadOnlyDictionary<string, string[]>? ValidateRequest(CreateHoldRequest request)
     {
-        var errors = new List<string>();
+        var errors = new Dictionary<string, List<string>>();
 
-        if (seatIds.Count == 0)
+        if (request.SeatIds.Count == 0)
         {
-            errors.Add("Select at least one seat to hold.");
+            AddError(errors, SeatIdsField, "Select at least one seat to hold.");
         }
 
-        if (seatIds.Distinct().Count() != seatIds.Count)
+        if (request.SeatIds.Distinct().Count() != request.SeatIds.Count)
         {
-            errors.Add("The same seat was selected more than once.");
+            AddError(errors, SeatIdsField, "The same seat was selected more than once.");
+        }
+
+        // The price is caller-supplied and taken on trust, but a negative one is
+        // not a difference of opinion about the FlashPrice — it is malformed, and
+        // it would otherwise freeze onto the Hold and become a negative Booking
+        // total at confirm.
+        if (request.PricePerSeat < 0)
+        {
+            AddError(errors, PricePerSeatField, "Price per seat cannot be negative.");
         }
 
         return errors.Count == 0
             ? null
-            : new Dictionary<string, string[]> { [SeatIdsField] = [.. errors] };
+            : errors.ToDictionary(field => field.Key, field => field.Value.ToArray());
+    }
+
+    private static void AddError(Dictionary<string, List<string>> errors, string field, string message)
+    {
+        if (!errors.TryGetValue(field, out var messages))
+        {
+            errors[field] = messages = [];
+        }
+
+        messages.Add(message);
     }
 
     private static IReadOnlyDictionary<string, string[]> SeatsNotOfFlight(IReadOnlyCollection<Guid> seatIds) =>

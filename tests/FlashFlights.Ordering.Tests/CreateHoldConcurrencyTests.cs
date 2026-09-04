@@ -31,6 +31,11 @@ public class CreateHoldConcurrencyTests(OrderingDatabaseFixture fixture)
 
         var clock = new TestClock(Now);
 
+        // Every contender blocks a pool thread at the barrier at once, so the pool
+        // must be able to hand out that many threads without waiting out its slow
+        // injection rate — otherwise the barrier stalls rather than staging a race.
+        EnsureThreadPoolCanRun(Contenders);
+
         // A barrier so every contender is poised at CreateHold before any is let
         // go — the race is staged, not hoped for.
         using var startLine = new Barrier(Contenders);
@@ -61,5 +66,17 @@ public class CreateHoldConcurrencyTests(OrderingDatabaseFixture fixture)
             .CountAsync(movement => movement.SeatId == seatIds[0] && movement.Type == SeatMovementType.Held);
 
         Assert.Equal(1, heldMovements);
+    }
+
+    /// <summary>
+    /// Raises the pool's minimum worker count so the barrier's participants can
+    /// all block at once. Without this the pool injects threads roughly one per
+    /// second, so a barrier wider than the default minimum turns a sub-second
+    /// race into a multi-second stall on a many-contender run.
+    /// </summary>
+    private static void EnsureThreadPoolCanRun(int contenders)
+    {
+        ThreadPool.GetMinThreads(out var workers, out var completionPorts);
+        ThreadPool.SetMinThreads(Math.Max(workers, contenders), completionPorts);
     }
 }
