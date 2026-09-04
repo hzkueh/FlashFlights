@@ -4,7 +4,7 @@
 
 **Blocked by:** 02.
 
-**Status:** ready-for-agent
+**Status:** in-review
 
 - [x] `IHoldService` with `CreateHold(flightId, seatIds, userId)`, `ConfirmHold(holdId)`, and an `ExpireHolds` sweep, reachable over HTTP through the gateway.
 - [x] Accepts a caller-supplied user id — does **not** depend on ticket 04, so it can be built in parallel with a stub id.
