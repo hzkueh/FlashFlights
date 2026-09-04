@@ -104,6 +104,96 @@ public sealed class HoldService(
         return new CreateHoldResult.Granted(ToView(hold, request.SeatIds, seats));
     }
 
+    public async Task<ConfirmHoldResult> ConfirmHoldAsync(
+        Guid holdId,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        var hold = await db.Holds.FirstOrDefaultAsync(h => h.Id == holdId, cancellationToken);
+
+        // A Hold that does not exist and one that is not the caller's are a single
+        // answer: a buyer may only confirm their own Hold, and distinguishing the
+        // two would leak which Hold ids are real.
+        if (hold is null || hold.UserId != userId)
+        {
+            return new ConfirmHoldResult.NotFound();
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+
+        // A Hold's Seats are its Held movements — there is no seat list to read.
+        // We lock exactly those rows so a concurrent confirm serialises behind us
+        // rather than deciding this Hold's fate underneath us. It is the same lock
+        // CreateHold takes, which is what keeps confirm and grant from racing
+        // across the same Seat.
+        var heldSeatIds = await db.SeatMovements
+            .Where(movement => movement.HoldId == holdId && movement.Type == SeatMovementType.Held)
+            .Select(movement => movement.SeatId)
+            .ToArrayAsync(cancellationToken);
+
+        await LockSeatsAsync(heldSeatIds, cancellationToken);
+
+        // One Booking per Hold is a database constraint; checking it under the
+        // lock turns the second confirm of a race from a unique-violation into a
+        // clean AlreadyConfirmed. A resolved Hold cannot be re-confirmed.
+        var alreadyConfirmed = await db.Bookings
+            .AnyAsync(booking => booking.HoldId == holdId, cancellationToken);
+
+        if (alreadyConfirmed)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return new ConfirmHoldResult.AlreadyConfirmed();
+        }
+
+        // The same clock and the same boundary the read side uses to decide a Seat
+        // is takeable again (SeatStatusRules.HasExpired): a Hold that has reached
+        // its TTL reads as expired to a browser, so it must be too late to confirm
+        // here too — never live to a confirm while expired to a reader.
+        var now = clock.GetUtcNow();
+
+        if (SeatStatusRules.HasExpired(hold.ExpiresAt, now))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return new ConfirmHoldResult.Expired();
+        }
+
+        // SeatNumber is computed, not a column, so the whole Seat is loaded and
+        // the label read in memory — the same shape CreateHold uses.
+        var seats = await db.Seats
+            .Where(seat => heldSeatIds.Contains(seat.Id))
+            .ToDictionaryAsync(seat => seat.Id, cancellationToken);
+
+        // The simulated payment always succeeds instantly (CONTEXT.md); the price
+        // paid is the FlashPrice frozen onto the Hold times the Seats confirmed,
+        // so a later Catalog price change cannot alter what the buyer agreed to.
+        var booking = new Booking
+        {
+            Id = Guid.CreateVersion7(),
+            HoldId = hold.Id,
+            UserId = hold.UserId,
+            ConfirmedAt = now,
+            PricePaid = hold.PricePerSeat * heldSeatIds.Length,
+        };
+
+        db.Bookings.Add(booking);
+        foreach (var seatId in heldSeatIds)
+        {
+            db.SeatMovements.Add(new SeatMovement
+            {
+                Id = Guid.CreateVersion7(),
+                SeatId = seatId,
+                HoldId = hold.Id,
+                Type = SeatMovementType.Confirmed,
+                OccurredAt = now,
+            });
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        return new ConfirmHoldResult.Confirmed(ToBookingView(booking, heldSeatIds, seats));
+    }
+
     /// <summary>
     /// Takes a row lock over the requested Seats for the life of the transaction
     /// — the one line the whole no-double-hold guarantee rests on. A concurrent
@@ -216,4 +306,16 @@ public sealed class HoldService(
             hold.ExpiresAt,
             hold.PricePerSeat,
             [.. seatIds.Select(id => new HeldSeatView(id, seats[id].SeatNumber))]);
+
+    private static BookingView ToBookingView(
+        Booking booking,
+        IReadOnlyList<Guid> seatIds,
+        IReadOnlyDictionary<Guid, Seat> seats) =>
+        new(
+            booking.Id,
+            booking.HoldId,
+            booking.UserId,
+            booking.ConfirmedAt,
+            booking.PricePaid,
+            [.. seatIds.Select(id => new BookedSeatView(id, seats[id].SeatNumber))]);
 }

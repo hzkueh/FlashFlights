@@ -9,13 +9,17 @@ namespace FlashFlights.Ordering.Holds;
 /// <summary>
 /// The HTTP surface for Holds, reached through the gateway at
 /// <c>/api/ordering/holds</c> (the gateway strips <c>/api/ordering</c> before
-/// forwarding). The handler is thin: it turns the token's <c>sub</c> into the
-/// Hold's owner and lets <see cref="IHoldService"/> make every decision, then
-/// maps its three outcomes onto the status codes the SPA distinguishes.
+/// forwarding). The handlers are thin: they turn the token's <c>sub</c> into the
+/// caller and let <see cref="IHoldService"/> make every decision — granting a
+/// Hold and confirming one into a Booking — then map each outcome onto the status
+/// code the SPA distinguishes.
 /// </summary>
 public static class HoldEndpoints
 {
     public const string BasePath = "/holds";
+
+    /// <summary>Where a confirmed Hold's Booking is reported to live — the Created location a confirm returns.</summary>
+    public const string BookingsBasePath = "/bookings";
 
     public static IEndpointRouteBuilder MapFlashFlightsHolds(this IEndpointRouteBuilder endpoints)
     {
@@ -24,6 +28,10 @@ public static class HoldEndpoints
         // The buyer is whoever the token says, not a body field: a caller must
         // not be able to hold Seats in someone else's name.
         holds.MapPost("/", CreateHoldAsync).RequireAuthorization();
+
+        // Confirm is scoped to one Hold and carries no body — the id is the whole
+        // request, and the owner comes from the token the same way it does above.
+        holds.MapPost("/{holdId:guid}/confirm", ConfirmHoldAsync).RequireAuthorization();
 
         return endpoints;
     }
@@ -74,4 +82,51 @@ public static class HoldEndpoints
                 + $"{string.Join(", ", conflict.Seats.Select(seat => seat.SeatNumber))}.",
             statusCode: StatusCodes.Status409Conflict,
             extensions: new Dictionary<string, object?> { ["seats"] = conflict.Seats });
+
+    private static async Task<IResult> ConfirmHoldAsync(
+        Guid holdId,
+        ClaimsPrincipal principal,
+        IHoldService holds,
+        CancellationToken cancellationToken)
+    {
+        var result = await holds.ConfirmHoldAsync(holdId, principal.RequireUserId(), cancellationToken);
+
+        return result switch
+        {
+            ConfirmHoldResult.Confirmed confirmed =>
+                TypedResults.Created($"{BookingsBasePath}/{confirmed.Booking.BookingId}", confirmed.Booking),
+            ConfirmHoldResult.NotFound =>
+                TypedResults.NotFound(),
+            ConfirmHoldResult.Expired =>
+                Expired(),
+            ConfirmHoldResult.AlreadyConfirmed =>
+                AlreadyConfirmed(),
+            _ => throw new InvalidOperationException($"Unhandled confirm result: {result.GetType().Name}."),
+        };
+    }
+
+    /// <summary>
+    /// 409 keyed to the retry-able case: the TTL lapsed before payment, so the
+    /// Seats are likely free again and starting a fresh Hold may still win them.
+    /// A <c>reason</c> extension lets the SPA branch without parsing prose.
+    /// </summary>
+    private static IResult Expired() =>
+        TypedResults.Problem(
+            title: "Hold expired",
+            detail: "This hold reached its time limit before it was confirmed. "
+                + "Its seats may be available again — try holding them afresh.",
+            statusCode: StatusCodes.Status409Conflict,
+            extensions: new Dictionary<string, object?> { ["reason"] = "expired" });
+
+    /// <summary>
+    /// 409 for the terminal case: the Hold already became a Booking, so there is
+    /// nothing to retry. The matching <c>reason</c> tells the SPA to stop rather
+    /// than offer another attempt.
+    /// </summary>
+    private static IResult AlreadyConfirmed() =>
+        TypedResults.Problem(
+            title: "Hold already confirmed",
+            detail: "This hold has already been confirmed into a booking.",
+            statusCode: StatusCodes.Status409Conflict,
+            extensions: new Dictionary<string, object?> { ["reason"] = "alreadyConfirmed" });
 }

@@ -69,6 +69,56 @@ public class CreateHoldConcurrencyTests(OrderingDatabaseFixture fixture)
     }
 
     /// <summary>
+    /// Confirm's own race: many parallel confirms of one Hold must yield exactly
+    /// one Booking. The seat lock serialises them so the losers read the Booking
+    /// the winner wrote and report AlreadyConfirmed, rather than several tripping
+    /// the one-Booking-per-Hold constraint at once.
+    /// </summary>
+    [Fact]
+    public async Task Exactly_one_of_many_parallel_confirms_of_the_same_hold_wins()
+    {
+        await using var setup = fixture.NewDbContext();
+        var flightId = Guid.NewGuid();
+        var seatIds = await OrderingTestData.SeedFlightWithSeatsAsync(setup, flightId, count: 1);
+        var userId = Guid.NewGuid();
+
+        var clock = new TestClock(Now);
+
+        var granted = Assert.IsType<CreateHoldResult.Granted>(
+            await OrderingTestData.HoldServiceFor(setup, clock)
+                .CreateHoldAsync(new CreateHoldRequest(flightId, seatIds, userId, PricePerSeat: 49.99m)));
+        var holdId = granted.Hold.HoldId;
+
+        EnsureThreadPoolCanRun(Contenders);
+        using var startLine = new Barrier(Contenders);
+
+        var attempts = Enumerable.Range(0, Contenders).Select(_ => Task.Run(async () =>
+        {
+            await using var db = fixture.NewDbContext();
+            var service = OrderingTestData.HoldServiceFor(db, clock);
+
+            startLine.SignalAndWait();
+
+            return await service.ConfirmHoldAsync(holdId, userId);
+        })).ToArray();
+
+        var results = await Task.WhenAll(attempts);
+
+        var confirmed = results.OfType<ConfirmHoldResult.Confirmed>().Count();
+        var alreadyConfirmed = results.OfType<ConfirmHoldResult.AlreadyConfirmed>().Count();
+
+        Assert.Equal(1, confirmed);
+        Assert.Equal(Contenders - 1, alreadyConfirmed);
+
+        await using var verify = fixture.NewDbContext();
+        Assert.Equal(1, await verify.Bookings.CountAsync(booking => booking.HoldId == holdId));
+        Assert.Equal(
+            1,
+            await verify.SeatMovements.CountAsync(
+                movement => movement.SeatId == seatIds[0] && movement.Type == SeatMovementType.Confirmed));
+    }
+
+    /// <summary>
     /// Raises the pool's minimum worker count so the barrier's participants can
     /// all block at once. Without this the pool injects threads roughly one per
     /// second, so a barrier wider than the default minimum turns a sub-second

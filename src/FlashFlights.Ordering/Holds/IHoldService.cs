@@ -1,10 +1,10 @@
 namespace FlashFlights.Ordering.Holds;
 
 /// <summary>
-/// The heart of Ordering: granting Holds over the SeatMovement ledger under real
-/// concurrency. Confirm and the expiry sweep join this interface in later slices
-/// of ticket 05; this slice is the Hold that has to be provably safe against two
-/// buyers racing for the same Seat before anything is built on top of it.
+/// The heart of Ordering: granting and confirming Holds over the SeatMovement
+/// ledger under real concurrency. The expiry sweep joins this interface in the
+/// next slice of ticket 05; grant and confirm are the two writes that have to be
+/// provably safe against two buyers racing for the same Seat.
 /// </summary>
 public interface IHoldService
 {
@@ -15,4 +15,17 @@ public interface IHoldService
     /// <see cref="CreateHoldResult.Conflict"/>, never a partial grant.
     /// </summary>
     Task<CreateHoldResult> CreateHoldAsync(CreateHoldRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Confirms a live Hold into a Booking, appending the Confirmed movements and
+    /// taking the frozen FlashPrice through a simulated payment that always
+    /// succeeds instantly. Only the Hold's owner may confirm it. Runs inside the
+    /// same row lock <see cref="CreateHoldAsync"/> uses, so a second confirm loses
+    /// cleanly (<see cref="ConfirmHoldResult.AlreadyConfirmed"/>) and a Hold past
+    /// its TTL is refused (<see cref="ConfirmHoldResult.Expired"/>) on the very
+    /// boundary the read side treats it as expired.
+    /// </summary>
+    /// <param name="holdId">The Hold to confirm.</param>
+    /// <param name="userId">The caller, taken from the token — a buyer may only confirm their own Hold.</param>
+    Task<ConfirmHoldResult> ConfirmHoldAsync(Guid holdId, Guid userId, CancellationToken cancellationToken = default);
 }

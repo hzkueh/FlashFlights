@@ -37,6 +37,23 @@ public class HoldEndpointsTests
         Assert.NotEqual(HttpStatusCode.NotFound, response.StatusCode);
     }
 
+    /// <summary>
+    /// The confirm route is reachable at the path the gateway forwards
+    /// (<c>/holds/{id}/confirm</c>): an unauthenticated post is rejected by auth
+    /// (401), not lost by routing (404). Guards the route template — a drift in
+    /// the id constraint or the segment would surface here as a 404.
+    /// </summary>
+    [Fact]
+    public async Task Confirming_a_hold_reaches_the_endpoint_at_the_forwarded_path()
+    {
+        await using var host = await StartAsync(new CreateHoldResult.Conflict([]));
+
+        var response = await host.Client.PostAsJsonBody($"{HoldEndpoints.BasePath}/{Guid.NewGuid()}/confirm");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.NotEqual(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
     private static async Task<HoldEndpointsHost> StartAsync(CreateHoldResult stubResult)
     {
         var builder = WebApplication.CreateSlimBuilder();
@@ -67,6 +84,14 @@ public class HoldEndpointsTests
         public Task<CreateHoldResult> CreateHoldAsync(
             CreateHoldRequest request,
             CancellationToken cancellationToken = default) => Task.FromResult(result);
+
+        // Routing is what these tests exercise; both posts are rejected by auth
+        // before the service is reached, so confirm never needs a real answer.
+        public Task<ConfirmHoldResult> ConfirmHoldAsync(
+            Guid holdId,
+            Guid userId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<ConfirmHoldResult>(new ConfirmHoldResult.NotFound());
     }
 
     private sealed class HoldEndpointsHost(WebApplication app, HttpClient client) : IAsyncDisposable
