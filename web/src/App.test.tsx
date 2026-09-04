@@ -2,10 +2,25 @@ import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { reachable, unreachable } from '@/test/backend'
+import { CATALOG_PATHS } from '@/lib/catalog'
+import { BACKEND_READINESS_PATH } from '@/lib/gateway'
+import { reachable, routed, unreachable } from '@/test/backend'
 import { stubPrefersDark } from '@/test/match-media'
 import { renderApp } from '@/test/render-app'
 import { SIGNED_IN_EMAIL, signedInGateway, storeSession } from '@/test/session'
+
+/**
+ * The shell wraps every route, and its default route is now the flights list —
+ * so a shell test that renders at '/' has to answer the catalog list too, or the
+ * page it's incidentally mounting has nothing to render. An empty list keeps
+ * these tests about the header, not the catalog.
+ */
+function shellGateway(): typeof fetch {
+  return routed({
+    [BACKEND_READINESS_PATH]: (request) => reachable(request.url),
+    [CATALOG_PATHS.flights]: async () => Response.json([]),
+  })
+}
 
 beforeEach(() => {
   localStorage.clear()
@@ -17,7 +32,7 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe('App shell', () => {
   it('reports connected once the watched service answers through the gateway', async () => {
-    renderApp(reachable)
+    renderApp(shellGateway())
 
     expect(await screen.findByRole('status')).toHaveTextContent(/connected/i)
   })
@@ -36,7 +51,7 @@ describe('App shell', () => {
   })
 
   it('toggles the theme from the header', async () => {
-    renderApp(reachable)
+    renderApp(shellGateway())
 
     await userEvent.click(screen.getByRole('button', { name: /switch to dark theme/i }))
 
@@ -44,12 +59,14 @@ describe('App shell', () => {
     expect(screen.getByRole('button', { name: /switch to light theme/i })).toBeInTheDocument()
   })
 
+  // The flights list ('/') and a flight's detail ('/flights/:id') are real pages
+  // now — covered by their own suites; these are the routes still standing in for
+  // later issues plus the auth forms.
   it.each([
     ['/bookings', /bookings/i],
     ['/notifications', /notifications/i],
     ['/login', /sign in/i],
     ['/register', /register/i],
-    ['/flights/abc', /flight/i],
   ])('routes %s to the page later issues fill in', async (route, heading) => {
     renderApp(reachable, route)
 
@@ -64,7 +81,7 @@ describe('App shell', () => {
 
   /** Browsing stays unauthenticated, so the header invites rather than gates. */
   it('offers the way in while signed out', () => {
-    renderApp(reachable)
+    renderApp(shellGateway())
 
     expect(screen.getByRole('link', { name: /sign in/i })).toHaveAttribute('href', '/login')
     expect(screen.getByRole('link', { name: /register/i })).toHaveAttribute('href', '/register')
@@ -73,7 +90,7 @@ describe('App shell', () => {
   it('names the signed-in User and offers the way out', () => {
     storeSession()
 
-    renderApp(signedInGateway())
+    renderApp(signedInGateway({ [CATALOG_PATHS.flights]: async () => Response.json([]) }))
 
     expect(screen.getByText(SIGNED_IN_EMAIL)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /sign out/i })).toBeInTheDocument()

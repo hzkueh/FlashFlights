@@ -1,6 +1,8 @@
 import { Route, Routes } from 'react-router'
 
 import { AppShell } from '@/components/app-shell'
+import { FlightPage } from '@/routes/flight-page'
+import { FlightsPage } from '@/routes/flights-page'
 import { LoginPage } from '@/routes/login-page'
 import { NotFoundPage } from '@/routes/not-found-page'
 import { PlaceholderPage } from '@/routes/placeholder-page'
@@ -18,11 +20,8 @@ export function App() {
   return (
     <Routes>
       <Route element={<AppShell />}>
-        <Route index element={<PlaceholderPage title="Flights" issue="06 — catalog browsing" />} />
-        <Route
-          path="flights/:flightId"
-          element={<PlaceholderPage title="Flight" issue="06 — seat map" />}
-        />
+        <Route index element={<FlightsPage />} />
+        <Route path="flights/:flightId" element={<FlightPage />} />
         <Route
           path="bookings"
           element={<PlaceholderPage title="Bookings" issue="07 — checkout and confirmation" />}
