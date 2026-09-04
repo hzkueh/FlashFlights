@@ -11,8 +11,8 @@ namespace FlashFlights.Ordering.Holds;
 /// <c>/api/ordering/holds</c> (the gateway strips <c>/api/ordering</c> before
 /// forwarding). The handlers are thin: they turn the token's <c>sub</c> into the
 /// caller and let <see cref="IHoldService"/> make every decision — granting a
-/// Hold and confirming one into a Booking — then map each outcome onto the status
-/// code the SPA distinguishes.
+/// Hold, confirming one into a Booking, and triggering the expiry sweep — then
+/// map each outcome onto the status code the SPA distinguishes.
 /// </summary>
 public static class HoldEndpoints
 {
@@ -32,6 +32,12 @@ public static class HoldEndpoints
         // Confirm is scoped to one Hold and carries no body — the id is the whole
         // request, and the owner comes from the token the same way it does above.
         holds.MapPost("/{holdId:guid}/confirm", ConfirmHoldAsync).RequireAuthorization();
+
+        // A manual trigger for the same sweep the background service runs on a
+        // timer — handy for the demo and for a test to force expiry on command.
+        // It only ever releases Holds already past their TTL, so it is idempotent
+        // and harmless; requiring auth keeps it from being an anonymous button.
+        holds.MapPost("/expire", ExpireHoldsAsync).RequireAuthorization();
 
         return endpoints;
     }
@@ -129,4 +135,11 @@ public static class HoldEndpoints
             detail: "This hold has already been confirmed into a booking.",
             statusCode: StatusCodes.Status409Conflict,
             extensions: new Dictionary<string, object?> { ["reason"] = "alreadyConfirmed" });
+
+    private static async Task<IResult> ExpireHoldsAsync(IHoldService holds, CancellationToken cancellationToken)
+    {
+        var result = await holds.ExpireHoldsAsync(cancellationToken);
+
+        return TypedResults.Ok(result);
+    }
 }

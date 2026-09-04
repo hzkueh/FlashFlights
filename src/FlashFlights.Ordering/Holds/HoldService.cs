@@ -62,7 +62,7 @@ public sealed class HoldService(
         var latest = await LatestMovementsAsync(request.SeatIds, cancellationToken);
 
         var conflicts = request.SeatIds
-            .Select(id => (Id: id, Status: SeatStatusRules.StatusOf(LatestOn(latest, id), now)))
+            .Select(id => (Id: id, Status: SeatStatusRules.StatusOf(StatusInputOn(latest, id), now)))
             .Where(seat => seat.Status != SeatStatus.Available)
             .Select(seat => new ConflictingSeat(seat.Id, seats[seat.Id].SeatNumber, seat.Status.ToString()))
             .ToArray();
@@ -121,25 +121,18 @@ public sealed class HoldService(
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
 
-        // A Hold's Seats are its Held movements — there is no seat list to read.
-        // We lock exactly those rows so a concurrent confirm serialises behind us
-        // rather than deciding this Hold's fate underneath us. It is the same lock
-        // CreateHold takes, which is what keeps confirm and grant from racing
-        // across the same Seat.
-        var heldSeatIds = await db.SeatMovements
-            .Where(movement => movement.HoldId == holdId && movement.Type == SeatMovementType.Held)
-            .Select(movement => movement.SeatId)
-            .ToArrayAsync(cancellationToken);
+        // Lock exactly the Hold's Seats so a concurrent confirm, or the expiry
+        // sweep, serialises behind us rather than deciding this Hold's fate
+        // underneath us. It is the same lock CreateHold takes, which is what keeps
+        // confirm and grant from racing across the same Seat.
+        var heldSeatIds = await HeldSeatIdsAsync(holdId, cancellationToken);
 
         await LockSeatsAsync(heldSeatIds, cancellationToken);
 
         // One Booking per Hold is a database constraint; checking it under the
         // lock turns the second confirm of a race from a unique-violation into a
         // clean AlreadyConfirmed. A resolved Hold cannot be re-confirmed.
-        var alreadyConfirmed = await db.Bookings
-            .AnyAsync(booking => booking.HoldId == holdId, cancellationToken);
-
-        if (alreadyConfirmed)
+        if (await HasBookingAsync(holdId, cancellationToken))
         {
             await transaction.RollbackAsync(cancellationToken);
             return new ConfirmHoldResult.AlreadyConfirmed();
@@ -194,6 +187,113 @@ public sealed class HoldService(
         return new ConfirmHoldResult.Confirmed(ToBookingView(booking, heldSeatIds, seats));
     }
 
+    public async Task<ExpireHoldsResult> ExpireHoldsAsync(CancellationToken cancellationToken = default)
+    {
+        var now = clock.GetUtcNow();
+
+        // Candidate Holds: past their TTL, never confirmed, and not yet released.
+        // A Hold's movements are uniform — all Held, or Held+Confirmed (it has a
+        // Booking), or Held+Released — so "no Booking and no Released movement" is
+        // exactly the set the sweep still owes a compensating Released. Confirming
+        // the boundary and the per-Seat state happens under the lock, in
+        // ReleaseExpiredHoldAsync; this query only narrows the work.
+        var expiredHoldIds = await db.Holds
+            .Where(hold => hold.ExpiresAt <= now)
+            .Where(hold => hold.Booking == null)
+            .Where(hold => hold.Movements.All(movement => movement.Type != SeatMovementType.Released))
+            .Select(hold => hold.Id)
+            .ToArrayAsync(cancellationToken);
+
+        var holdsExpired = 0;
+        var seatsReleased = 0;
+
+        // One transaction per Hold, not one over the whole sweep: the lock stays
+        // narrow and a confirm racing one Hold is never blocked behind the release
+        // of an unrelated one.
+        foreach (var holdId in expiredHoldIds)
+        {
+            var released = await ReleaseExpiredHoldAsync(holdId, cancellationToken);
+            if (released > 0)
+            {
+                holdsExpired++;
+                seatsReleased += released;
+            }
+        }
+
+        return new ExpireHoldsResult(holdsExpired, seatsReleased);
+    }
+
+    /// <summary>
+    /// Releases one expired Hold's still-held Seats under the row lock, or does
+    /// nothing if a confirm won the race or the Hold turns out not to be expired
+    /// on the shared boundary. Returns the number of Seats released.
+    /// </summary>
+    private async Task<int> ReleaseExpiredHoldAsync(Guid holdId, CancellationToken cancellationToken)
+    {
+        var hold = await db.Holds.FirstOrDefaultAsync(h => h.Id == holdId, cancellationToken);
+        if (hold is null)
+        {
+            return 0;
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+
+        var heldSeatIds = await HeldSeatIdsAsync(holdId, cancellationToken);
+
+        await LockSeatsAsync(heldSeatIds, cancellationToken);
+
+        // The one boundary every path shares (SeatStatusRules.HasExpired): the
+        // sweep must not release a Hold a confirm could still win. Re-checked here
+        // under the lock so a confirm that committed since the candidate query
+        // cannot be undone.
+        var now = clock.GetUtcNow();
+        if (!SeatStatusRules.HasExpired(hold.ExpiresAt, now))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return 0;
+        }
+
+        if (await HasBookingAsync(holdId, cancellationToken))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return 0;
+        }
+
+        // Only release a Seat whose latest movement is still this Hold's Held. A
+        // Seat that read-side expiry let a newer Hold take has moved on, and a
+        // Released posted for it would wrongly free the newer Hold's Seat. This is
+        // also what makes the sweep idempotent: a Seat already Released is no
+        // longer its own latest-Held, so a second run skips it.
+        var latest = await LatestMovementsAsync(heldSeatIds, cancellationToken);
+
+        var released = 0;
+        foreach (var seatId in heldSeatIds)
+        {
+            if (latest.TryGetValue(seatId, out var movement)
+                && movement.Type == SeatMovementType.Held
+                && movement.HoldId == holdId)
+            {
+                db.SeatMovements.Add(new SeatMovement
+                {
+                    Id = Guid.CreateVersion7(),
+                    SeatId = seatId,
+                    HoldId = holdId,
+                    Type = SeatMovementType.Released,
+                    OccurredAt = now,
+                });
+                released++;
+            }
+        }
+
+        if (released > 0)
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return released;
+    }
+
     /// <summary>
     /// Takes a row lock over the requested Seats for the life of the transaction
     /// — the one line the whole no-double-hold guarantee rests on. A concurrent
@@ -217,7 +317,33 @@ public sealed class HoldService(
             cancellationToken);
     }
 
-    private async Task<Dictionary<Guid, LatestMovement>> LatestMovementsAsync(
+    /// <summary>
+    /// A Hold's Seats <em>are</em> its Held movements (CONTEXT.md) — there is no
+    /// seat list to read. Both confirm and the sweep start from this, and lock
+    /// exactly these rows.
+    /// </summary>
+    private Task<Guid[]> HeldSeatIdsAsync(Guid holdId, CancellationToken cancellationToken) =>
+        db.SeatMovements
+            .Where(movement => movement.HoldId == holdId && movement.Type == SeatMovementType.Held)
+            .Select(movement => movement.SeatId)
+            .ToArrayAsync(cancellationToken);
+
+    /// <summary>
+    /// Whether the Hold has already resolved into a Booking. One Booking per Hold
+    /// is a database constraint, so this read under the lock is what turns a
+    /// re-confirm, or a confirm/sweep race, into a clean outcome rather than a
+    /// unique-violation.
+    /// </summary>
+    private Task<bool> HasBookingAsync(Guid holdId, CancellationToken cancellationToken) =>
+        db.Bookings.AnyAsync(booking => booking.HoldId == holdId, cancellationToken);
+
+    /// <summary>
+    /// The newest movement on each of the given Seats — the ledger's central read
+    /// (ADR-0001) — reduced to everything its two callers need between them: the
+    /// Hold's expiry for the status rules, and the type and owning Hold for the
+    /// sweep's "is this Hold's Held still the Seat's latest?" decision.
+    /// </summary>
+    private async Task<Dictionary<Guid, SeatLedgerHead>> LatestMovementsAsync(
         IReadOnlyList<Guid> seatIds,
         CancellationToken cancellationToken)
     {
@@ -227,6 +353,7 @@ public sealed class HoldService(
             {
                 movement.SeatId,
                 movement.Type,
+                movement.HoldId,
                 movement.OccurredAt,
                 movement.Id,
                 ExpiresAt = movement.Hold!.ExpiresAt,
@@ -247,12 +374,13 @@ public sealed class HoldService(
                         .ThenByDescending(movement => movement.Id)
                         .First();
 
-                    return new LatestMovement(newest.Type, newest.ExpiresAt);
+                    return new SeatLedgerHead(newest.Type, newest.HoldId, newest.ExpiresAt);
                 });
     }
 
-    private static LatestMovement? LatestOn(IReadOnlyDictionary<Guid, LatestMovement> latest, Guid seatId) =>
-        latest.TryGetValue(seatId, out var movement) ? movement : null;
+    /// <summary>The status-rule view of one Seat's latest movement — just the fields <see cref="SeatStatusRules"/> reads.</summary>
+    private static LatestMovement? StatusInputOn(IReadOnlyDictionary<Guid, SeatLedgerHead> heads, Guid seatId) =>
+        heads.TryGetValue(seatId, out var head) ? new LatestMovement(head.Type, head.HoldExpiresAt) : null;
 
     private static IReadOnlyDictionary<string, string[]>? ValidateRequest(CreateHoldRequest request)
     {
@@ -318,4 +446,11 @@ public sealed class HoldService(
             booking.ConfirmedAt,
             booking.PricePaid,
             [.. seatIds.Select(id => new BookedSeatView(id, seats[id].SeatNumber))]);
+
+    /// <summary>
+    /// One Seat's latest movement, reduced to what the callers of
+    /// <see cref="LatestMovementsAsync"/> decide on: its type, the Hold that posted
+    /// it, and that Hold's expiry.
+    /// </summary>
+    private readonly record struct SeatLedgerHead(SeatMovementType Type, Guid HoldId, DateTimeOffset HoldExpiresAt);
 }

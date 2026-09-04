@@ -4,6 +4,7 @@ using FlashFlights.ServiceDefaults;
 using FlashFlights.ServiceDefaults.DataStores;
 using FlashFlights.ServiceDefaults.Wiring;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -26,7 +27,21 @@ builder.Services.AddOptions<HoldOptions>()
     .ValidateDataAnnotations()
     .ValidateOnStart();
 
+builder.Services.AddOptions<HoldSweepOptions>()
+    .Bind(builder.Configuration.GetSection(HoldSweepOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+// Cross-checks the sweep interval against the TTL, which a data annotation on one
+// options type cannot see — a sweep no more frequent than expiry defeats itself.
+builder.Services.AddSingleton<IValidateOptions<HoldSweepOptions>, ValidateHoldSweepOptions>();
+
 builder.Services.AddScoped<IHoldService, HoldService>();
+
+// The sweep that posts Released movements for silently expired Holds, so Catalog
+// learns of them (ADR-0001). The read side is already correct without it; this is
+// what keeps browsing counts fresh.
+builder.Services.AddHostedService<HoldExpirySweep>();
 
 var app = builder.Build();
 

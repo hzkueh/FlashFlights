@@ -54,6 +54,22 @@ public class HoldEndpointsTests
         Assert.NotEqual(HttpStatusCode.NotFound, response.StatusCode);
     }
 
+    /// <summary>
+    /// The manual sweep trigger is reachable at the forwarded path
+    /// (<c>/holds/expire</c>) and, being a system action rather than an anonymous
+    /// button, is behind auth: an unauthenticated post is a 401, not a 404.
+    /// </summary>
+    [Fact]
+    public async Task Triggering_expiry_reaches_the_endpoint_at_the_forwarded_path()
+    {
+        await using var host = await StartAsync(new CreateHoldResult.Conflict([]));
+
+        var response = await host.Client.PostAsJsonBody($"{HoldEndpoints.BasePath}/expire");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.NotEqual(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
     private static async Task<HoldEndpointsHost> StartAsync(CreateHoldResult stubResult)
     {
         var builder = WebApplication.CreateSlimBuilder();
@@ -85,13 +101,16 @@ public class HoldEndpointsTests
             CreateHoldRequest request,
             CancellationToken cancellationToken = default) => Task.FromResult(result);
 
-        // Routing is what these tests exercise; both posts are rejected by auth
-        // before the service is reached, so confirm never needs a real answer.
+        // Routing is what these tests exercise; every post is rejected by auth
+        // before the service is reached, so these never need a real answer.
         public Task<ConfirmHoldResult> ConfirmHoldAsync(
             Guid holdId,
             Guid userId,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<ConfirmHoldResult>(new ConfirmHoldResult.NotFound());
+
+        public Task<ExpireHoldsResult> ExpireHoldsAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ExpireHoldsResult(0, 0));
     }
 
     private sealed class HoldEndpointsHost(WebApplication app, HttpClient client) : IAsyncDisposable
