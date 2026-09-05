@@ -27,6 +27,13 @@ export interface Flight {
   destination: string
   departureAt: string
   flashPrice: number
+  /**
+   * The standing fare this flight is marked down from, or `null` when no saving
+   * is advertised (CONTEXT.md's ReferenceFare). Display only — the price paid is
+   * always {@link flashPrice}. The saving percentage is derived by
+   * `savingsPercent`, never sent by the server.
+   */
+  referenceFare: number | null
   saleStartsAt: string
   saleEndsAt: string
   saleState: SaleState

@@ -31,6 +31,16 @@ public sealed class Flight
     /// </summary>
     public decimal FlashPrice { get; set; }
 
+    /// <summary>
+    /// The standing, non-sale price this Flight's FlashPrice is marked down from,
+    /// or null when no saving is advertised (CONTEXT.md's ReferenceFare). Display
+    /// only: never charged, never the price paid, never the basis for a Hold. When
+    /// present it must be greater than FlashPrice; the saving percentage is derived
+    /// by the SPA, never stored here. Same decimal-as-text SQLite caveat as
+    /// FlashPrice — do not compare or order on it in SQL.
+    /// </summary>
+    public decimal? ReferenceFare { get; set; }
+
     public DateTimeOffset SaleStartsAt { get; set; }
 
     public DateTimeOffset SaleEndsAt { get; set; }

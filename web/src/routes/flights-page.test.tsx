@@ -20,6 +20,7 @@ function aFlight(overrides: Partial<Flight> = {}): Flight {
     destination: 'BCN',
     departureAt: '2026-10-01T09:30:00Z',
     flashPrice: 49.99,
+    referenceFare: null,
     saleStartsAt: '2026-09-05T11:00:00Z',
     saleEndsAt: '2026-09-05T17:00:00Z',
     saleState: 'Live',
@@ -83,6 +84,34 @@ describe('the flights list', () => {
     const card = await screen.findByRole('link', { name: /LHR/ })
     expect(within(card).getByText(/Seats — of —/)).toBeInTheDocument()
     expect(within(card).queryByText(/seats left/)).not.toBeInTheDocument()
+  })
+
+  it('shows the reference fare and saving when a flight is marked down', async () => {
+    renderApp(
+      browseGateway({
+        [CATALOG_PATHS.flights]: async () =>
+          Response.json([aFlight({ flashPrice: 149, referenceFare: 229 })]),
+      }),
+    )
+
+    const card = await screen.findByRole('link', { name: /LHR/ })
+    expect(within(card).getByText('£149.00')).toBeInTheDocument()
+    expect(within(card).getByText('£229.00')).toBeInTheDocument()
+    // (229 - 149) / 229 = 34.9% -> 35
+    expect(within(card).getByText(/save 35%/i)).toBeInTheDocument()
+  })
+
+  it('shows a bare price, no saving, when a flight has no reference fare', async () => {
+    renderApp(
+      browseGateway({
+        [CATALOG_PATHS.flights]: async () =>
+          Response.json([aFlight({ flashPrice: 149, referenceFare: null })]),
+      }),
+    )
+
+    const card = await screen.findByRole('link', { name: /LHR/ })
+    expect(within(card).getByText('£149.00')).toBeInTheDocument()
+    expect(within(card).queryByText(/save/i)).not.toBeInTheDocument()
   })
 
   it('says so plainly when no sales are scheduled', async () => {
