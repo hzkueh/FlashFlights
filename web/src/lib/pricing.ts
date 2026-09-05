@@ -17,7 +17,7 @@ import type { Flight } from '@/lib/catalog'
 export function savingsPercent(flight: Pick<Flight, 'flashPrice' | 'referenceFare'>): number | null {
   const { flashPrice, referenceFare } = flight
 
-  if (referenceFare === null || referenceFare <= flashPrice) {
+  if (referenceFare === null || referenceFare === undefined || referenceFare <= flashPrice) {
     return null
   }
 

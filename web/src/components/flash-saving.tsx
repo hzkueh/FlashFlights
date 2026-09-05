@@ -16,7 +16,7 @@ import { savingsPercent } from '@/lib/pricing'
 export function FlashSaving({ flight }: { flight: Flight }) {
   const percent = savingsPercent(flight)
 
-  if (percent === null || flight.referenceFare === null) {
+  if (percent === null || flight.referenceFare === null || flight.referenceFare === undefined) {
     return null
   }
 
