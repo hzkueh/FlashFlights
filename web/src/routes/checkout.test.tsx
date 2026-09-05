@@ -146,11 +146,11 @@ describe('the checkout flow', () => {
     await userEvent.click(screen.getByRole('button', { name: /hold 2 seats/i }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/1A.*taken/i)
-    // The taken seat is dropped; the other stays selected and holdable.
-    expect(screen.getByRole('button', { name: 'Seat 1A, Available' })).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    )
+    // The taken seat now shows as taken (Held) rather than a stale, clickable
+    // Available button — the buyer can't re-select the seat they just lost.
+    expect(screen.getByLabelText('Seat 1A, Held')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Seat 1A, Available' })).not.toBeInTheDocument()
+    // The other seat stays selected and holdable.
     expect(screen.getByRole('button', { name: 'Seat 1B, Available' })).toHaveAttribute(
       'aria-pressed',
       'true',

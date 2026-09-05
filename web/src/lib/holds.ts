@@ -1,4 +1,5 @@
-import { bearer } from '@/lib/auth'
+import { UNREACHABLE, bearer } from '@/lib/auth'
+import type { SeatStatus } from '@/lib/seat-map'
 
 /**
  * The SPA's side of Ordering's Hold endpoint. Requesting a Hold is the one write
@@ -29,11 +30,11 @@ export interface Hold {
   seats: HeldSeat[]
 }
 
-/** A Seat that blocked a Hold, and the status that blocked it. */
+/** A Seat that blocked a Hold, and the status (Held or Confirmed) that blocked it. */
 export interface ConflictingSeat {
   seatId: string
   seatNumber: string
-  status: string
+  status: SeatStatus
 }
 
 /** What the checkout asks for: exactly these Seats, at the price the buyer was shown. */
@@ -56,9 +57,6 @@ export type CreateHoldOutcome =
 
 /** Shown when a well-formed request failed for a reason the SPA cannot name precisely. */
 export const HOLD_FAILED = 'Something went wrong holding those seats. Please try again.'
-
-/** Shown when the gateway could not be reached at all — a different problem from being refused. */
-export const HOLD_UNREACHABLE = 'FlashFlights could not be reached. Check the gateway is running.'
 
 interface ProblemDetails {
   detail?: string
@@ -91,7 +89,7 @@ export async function createHold(
       throw cause
     }
 
-    return { status: 'error', message: HOLD_UNREACHABLE }
+    return { status: 'error', message: UNREACHABLE }
   }
 
   if (response.status === 201) {

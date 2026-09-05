@@ -68,7 +68,12 @@ function Checkout({ flight, seats }: { flight: Flight; seats: Seat[] }) {
   const [phase, setPhase] = useState<Phase>({ name: 'selecting' })
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
   const [notice, setNotice] = useState<Notice | null>(null)
+  // What a lost race told us about Seats others took, laid over the once-loaded
+  // map so a just-taken Seat renders as taken (not a stale Available button)
+  // without a refetch that would unmount this checkout. Ticket 08 makes it live.
+  const [taken, setTaken] = useState<ReadonlyMap<string, SeatStatus>>(new Map())
 
+  const shownSeats = taken.size === 0 ? seats : applyStatuses(seats, taken)
   const heldSeatIds = phase.name === 'held' ? new Set(phase.hold.seats.map((seat) => seat.seatId)) : null
 
   function toggle(seatId: string) {
@@ -114,9 +119,11 @@ function Checkout({ flight, seats }: { flight: Flight; seats: Seat[] }) {
         setPhase({ name: 'held', hold: outcome.hold })
         return
       case 'conflict':
-        // Drop the Seats that were taken so what stays selected is holdable; the
-        // notice names them, and the buyer can hold the rest or pick others.
+        // Drop the Seats that were taken so what stays selected is holdable, and
+        // mark them taken so they stop looking selectable; the notice names them,
+        // and the buyer can hold the rest or pick others.
         setSelected((current) => without(current, outcome.seats))
+        setTaken((current) => withStatuses(current, outcome.seats))
         setNotice({ kind: 'conflict', seats: outcome.seats })
         setPhase({ name: 'selecting' })
         return
@@ -135,7 +142,7 @@ function Checkout({ flight, seats }: { flight: Flight; seats: Seat[] }) {
   return (
     <div className="space-y-4">
       <SeatGrid
-        seats={seats}
+        seats={shownSeats}
         selected={selected}
         heldByYou={heldSeatIds}
         interactive={phase.name === 'selecting'}
@@ -402,6 +409,29 @@ function without(selected: ReadonlySet<string>, taken: ConflictingSeat[]): Set<s
   }
 
   return next
+}
+
+/** The taken-Seat overlay grown by what a conflict just reported. */
+function withStatuses(
+  taken: ReadonlyMap<string, SeatStatus>,
+  reported: ConflictingSeat[],
+): Map<string, SeatStatus> {
+  const next = new Map(taken)
+
+  for (const seat of reported) {
+    next.set(seat.seatId, seat.status)
+  }
+
+  return next
+}
+
+/** The loaded Seats with the taken overlay applied — the status the buyer should see. */
+function applyStatuses(seats: Seat[], taken: ReadonlyMap<string, SeatStatus>): Seat[] {
+  return seats.map((seat) => {
+    const status = taken.get(seat.seatId)
+
+    return status === undefined ? seat : { ...seat, status }
+  })
 }
 
 /** Seats arrive in grid order already; this only splits the flat list into rows. */
