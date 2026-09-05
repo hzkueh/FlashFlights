@@ -1,3 +1,4 @@
+using FlashFlights.Ordering.Bookings;
 using FlashFlights.Ordering.Holds;
 using FlashFlights.Ordering.Persistence;
 using FlashFlights.Ordering.SeatMaps;
@@ -48,6 +49,10 @@ builder.Services.AddScoped<IHoldService, HoldService>();
 // statuses, unauthenticated and lock-free (it grants nothing).
 builder.Services.AddScoped<ISeatMapService, SeatMapService>();
 
+// The read side of Bookings: one buyer's completed purchases, authenticated and
+// scoped to the token's User. Terminal data, so it needs no clock or lock.
+builder.Services.AddScoped<IBookingReadService, BookingReadService>();
+
 // The sweep that posts Released movements for silently expired Holds, so Catalog
 // learns of them (ADR-0001). The read side is already correct without it; this is
 // what keeps browsing counts fresh.
@@ -60,6 +65,8 @@ app.MapFlashFlightsHealth();
 app.MapFlashFlightsHolds();
 
 app.MapFlashFlightsSeatMaps();
+
+app.MapFlashFlightsBookings();
 
 // Ticket-01 wiring probe: what this service actually consumed off the bus.
 // Remove with PingSent.

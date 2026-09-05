@@ -2,6 +2,7 @@ import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { type Booking, confirmHoldPath } from '@/lib/bookings'
 import { CATALOG_PATHS, type Flight } from '@/lib/catalog'
 import { HOLDS_PATH, type Hold } from '@/lib/holds'
 import { SEAT_MAP_PATH, type Seat, type SeatMap } from '@/lib/seat-map'
@@ -52,9 +53,11 @@ function twoAvailableSeats(): SeatMap {
   }
 }
 
+const HOLD_ID = '0199f0e2-2222-7000-8000-000000000001'
+
 function aHold(seats: { seatId: string; seatNumber: string }[], overrides: Partial<Hold> = {}): Hold {
   return {
-    holdId: '0199f0e2-2222-7000-8000-000000000001',
+    holdId: HOLD_ID,
     flightId: FLIGHT_ID,
     userId: '0199f0e2-0000-7000-8000-000000000001',
     expiresAt: new Date(Date.now() + 2 * 60 * 1000).toISOString(),
@@ -62,6 +65,32 @@ function aHold(seats: { seatId: string; seatNumber: string }[], overrides: Parti
     seats,
     ...overrides,
   }
+}
+
+function aBooking(seats: { seatId: string; seatNumber: string }[], overrides: Partial<Booking> = {}): Booking {
+  return {
+    bookingId: '0199f0e2-4444-7000-8000-000000000001',
+    holdId: HOLD_ID,
+    userId: '0199f0e2-0000-7000-8000-000000000001',
+    flightId: FLIGHT_ID,
+    confirmedAt: '2026-09-05T12:00:00Z',
+    pricePaid: FLASH_PRICE * seats.length,
+    seats,
+    ...overrides,
+  }
+}
+
+const BOTH_SEATS = [
+  { seatId: SEAT_1A, seatNumber: '1A' },
+  { seatId: SEAT_1B, seatNumber: '1B' },
+]
+
+/** Drives the flow up to a granted Hold on 1A and 1B, ready for the confirm step. */
+async function holdBothSeats() {
+  await userEvent.click(await screen.findByRole('button', { name: 'Seat 1A, Available' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Seat 1B, Available' }))
+  await userEvent.click(screen.getByRole('button', { name: /hold 2 seats/i }))
+  await screen.findByLabelText('Seat 1A, held by you')
 }
 
 function renderCheckout(routes: Record<string, Route>, { signedIn = true } = {}) {
@@ -188,5 +217,64 @@ describe('the checkout flow', () => {
     await userEvent.click(screen.getByRole('button', { name: /sign in to hold seats/i }))
 
     expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
+  })
+
+  it('confirms the hold and shows a booking confirmation with the seats, flight and price paid', async () => {
+    let confirmedHoldId: string | undefined
+    renderCheckout({
+      [HOLDS_PATH]: async () => Response.json(aHold(BOTH_SEATS), { status: 201 }),
+      [confirmHoldPath(HOLD_ID)]: async (request) => {
+        confirmedHoldId = new URL(request.url).pathname.split('/').at(-2)
+        return Response.json(aBooking(BOTH_SEATS), { status: 201 })
+      },
+    })
+
+    await holdBothSeats()
+    await userEvent.click(screen.getByRole('button', { name: /confirm and pay/i }))
+
+    // The confirmation answers the three things a buyer wants after paying.
+    expect(await screen.findByText('Booking confirmed')).toBeInTheDocument()
+    expect(screen.getByText('1A, 1B')).toBeInTheDocument()
+    expect(screen.getByText('LHR → BCN · FF412')).toBeInTheDocument()
+    expect(screen.getByText('£99.98')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /view your bookings/i })).toBeInTheDocument()
+    // Confirm hit the exact hold's confirm endpoint.
+    expect(confirmedHoldId).toBe(HOLD_ID)
+  })
+
+  it('releases the seats and tells the buyer when the hold expired before they paid', async () => {
+    renderCheckout({
+      [HOLDS_PATH]: async () => Response.json(aHold(BOTH_SEATS), { status: 201 }),
+      [confirmHoldPath(HOLD_ID)]: async () =>
+        Response.json(
+          { title: 'Hold expired', detail: 'This hold reached its time limit.', reason: 'expired' },
+          { status: 409 },
+        ),
+    })
+
+    await holdBothSeats()
+    await userEvent.click(screen.getByRole('button', { name: /confirm and pay/i }))
+
+    expect(await screen.findByText(/ran out of time/i)).toBeInTheDocument()
+    // Back to a usable selection: the seats are pickable again, nothing is booked.
+    expect(await screen.findByRole('button', { name: 'Seat 1A, Available' })).toBeInTheDocument()
+    expect(screen.queryByText('Booking confirmed')).not.toBeInTheDocument()
+  })
+
+  it('keeps the hold live when a confirm fails, so the buyer can try paying again', async () => {
+    renderCheckout({
+      [HOLDS_PATH]: async () => Response.json(aHold(BOTH_SEATS), { status: 201 }),
+      [confirmHoldPath(HOLD_ID)]: async () => {
+        throw new TypeError('Failed to fetch')
+      },
+    })
+
+    await holdBothSeats()
+    await userEvent.click(screen.getByRole('button', { name: /confirm and pay/i }))
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    // The hold is intact: still counting down, and the pay button is offered again.
+    expect(screen.getByText(/time left/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /confirm and pay/i })).toBeEnabled()
   })
 })

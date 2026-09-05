@@ -192,7 +192,7 @@ public sealed class HoldService(
         // These Seats have left the pool for good; the counts learn of it here.
         await notifier.SeatsConfirmedAsync(hold.FlightId, heldSeatIds, now, cancellationToken);
 
-        return new ConfirmHoldResult.Confirmed(ToBookingView(booking, heldSeatIds, seats));
+        return new ConfirmHoldResult.Confirmed(ToBookingView(booking, hold.FlightId, heldSeatIds, seats));
     }
 
     public async Task<ExpireHoldsResult> ExpireHoldsAsync(CancellationToken cancellationToken = default)
@@ -414,12 +414,14 @@ public sealed class HoldService(
 
     private static BookingView ToBookingView(
         Booking booking,
+        Guid flightId,
         IReadOnlyList<Guid> seatIds,
         IReadOnlyDictionary<Guid, Seat> seats) =>
         new(
             booking.Id,
             booking.HoldId,
             booking.UserId,
+            flightId,
             booking.ConfirmedAt,
             booking.PricePaid,
             [.. seatIds.Select(id => new BookedSeatView(id, seats[id].SeatNumber))]);

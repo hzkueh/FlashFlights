@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router'
+import { Link, useLocation, useNavigate } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { useAsync } from '@/hooks/use-async'
 import { useNow } from '@/hooks/use-now'
 import { useSession } from '@/hooks/use-session'
+import { type Booking, type ConfirmHoldOutcome, confirmHold } from '@/lib/bookings'
 import type { Flight } from '@/lib/catalog'
-import { formatPrice, humanizeDuration } from '@/lib/format'
+import { formatDateTime, formatPrice, formatRoute, humanizeDuration } from '@/lib/format'
 import {
   type ConflictingSeat,
   type CreateHoldOutcome,
@@ -54,8 +55,19 @@ export function SeatCheckout({ flight }: { flight: Flight }) {
   )
 }
 
-/** The buyer's checkout is either picking Seats or holding a set of them. */
-type Phase = { name: 'selecting' } | { name: 'holding' } | { name: 'held'; hold: Hold }
+/**
+ * The buyer's checkout walks these phases: picking Seats, waiting on a Hold,
+ * holding one (with a live countdown), paying for it, and finally booked. `held`
+ * and `confirming` both show the held Seats and countdown — `confirming` only
+ * disables the pay button while the confirm is in flight — so the countdown never
+ * unmounts between clicking pay and the Booking coming back.
+ */
+type Phase =
+  | { name: 'selecting' }
+  | { name: 'holding' }
+  | { name: 'held'; hold: Hold }
+  | { name: 'confirming'; hold: Hold }
+  | { name: 'booked'; booking: Booking }
 
 /** A message layered over selection: a lost race, a plain failure, or a lapsed Hold. */
 type Notice =
@@ -74,7 +86,9 @@ function Checkout({ flight, seats }: { flight: Flight; seats: Seat[] }) {
   const [taken, setTaken] = useState<ReadonlyMap<string, SeatStatus>>(new Map())
 
   const shownSeats = taken.size === 0 ? seats : applyStatuses(seats, taken)
-  const heldSeatIds = phase.name === 'held' ? new Set(phase.hold.seats.map((seat) => seat.seatId)) : null
+  // The Seats this buyer holds (or has just booked) light up as "held by you" —
+  // the map cannot say who holds a Seat, but the checkout knows its own.
+  const yourSeatIds = ownSeatIds(phase)
 
   function toggle(seatId: string) {
     setNotice(null)
@@ -133,6 +147,48 @@ function Checkout({ flight, seats }: { flight: Flight; seats: Seat[] }) {
     }
   }
 
+  /** Takes the Hold through the simulated payment and into a Booking. */
+  async function confirm() {
+    if (phase.name !== 'held' || session === null) {
+      return
+    }
+
+    const { hold } = phase
+    setPhase({ name: 'confirming', hold })
+    setNotice(null)
+
+    let outcome: ConfirmHoldOutcome
+    try {
+      outcome = await confirmHold(hold.holdId, session.token)
+    } catch {
+      // An abort is the only thing confirmHold throws, and this flow never aborts.
+      setPhase({ name: 'held', hold })
+      return
+    }
+
+    switch (outcome.status) {
+      case 'confirmed':
+        setPhase({ name: 'booked', booking: outcome.booking })
+        return
+      case 'expired':
+        // The TTL lapsed under the confirm: the Seats are released, exactly as a
+        // countdown reaching zero would leave them.
+        onExpired()
+        return
+      case 'alreadyConfirmed':
+        // This Hold already became a Booking — nothing to retry. Point the buyer
+        // at their bookings rather than offer another payment.
+        setPhase({ name: 'selecting' })
+        setNotice({ kind: 'error', message: 'This hold is already booked — see it under Bookings.' })
+        return
+      default:
+        // A transient failure: keep the Hold live so its countdown runs on and the
+        // buyer can try paying again, rather than losing Seats to a network blip.
+        setPhase({ name: 'held', hold })
+        setNotice({ kind: 'error', message: outcome.message })
+    }
+  }
+
   /** A lapsed Hold releases its Seats and drops the buyer back to selecting. */
   function onExpired() {
     setPhase({ name: 'selecting' })
@@ -144,15 +200,22 @@ function Checkout({ flight, seats }: { flight: Flight; seats: Seat[] }) {
       <SeatGrid
         seats={shownSeats}
         selected={selected}
-        heldByYou={heldSeatIds}
+        heldByYou={yourSeatIds}
         interactive={phase.name === 'selecting'}
         onToggle={toggle}
       />
 
       {notice !== null && <NoticeLine notice={notice} />}
 
-      {phase.name === 'held' ? (
-        <HeldPanel hold={phase.hold} onExpired={onExpired} />
+      {phase.name === 'booked' ? (
+        <BookingConfirmation flight={flight} booking={phase.booking} />
+      ) : phase.name === 'held' || phase.name === 'confirming' ? (
+        <HeldPanel
+          hold={phase.hold}
+          confirming={phase.name === 'confirming'}
+          onConfirm={confirm}
+          onExpired={onExpired}
+        />
       ) : (
         <SelectionBar
           count={selected.size}
@@ -164,6 +227,19 @@ function Checkout({ flight, seats }: { flight: Flight; seats: Seat[] }) {
       )}
     </div>
   )
+}
+
+/** The current buyer's Seats across the phases that have any — for the "held by you" highlight. */
+function ownSeatIds(phase: Phase): ReadonlySet<string> | null {
+  if (phase.name === 'held' || phase.name === 'confirming') {
+    return new Set(phase.hold.seats.map((seat) => seat.seatId))
+  }
+
+  if (phase.name === 'booked') {
+    return new Set(phase.booking.seats.map((seat) => seat.seatId))
+  }
+
+  return null
 }
 
 /** The action row under the map while the buyer is choosing Seats. */
@@ -218,8 +294,18 @@ function SelectionBar({
   )
 }
 
-/** The held Seats and a live countdown to their TTL — confirmation is the next step. */
-function HeldPanel({ hold, onExpired }: { hold: Hold; onExpired: () => void }) {
+/** The held Seats, a live countdown to their TTL, and the button that pays for them. */
+function HeldPanel({
+  hold,
+  confirming,
+  onConfirm,
+  onExpired,
+}: {
+  hold: Hold
+  confirming: boolean
+  onConfirm: () => void
+  onExpired: () => void
+}) {
   const now = useNow()
   const remaining = new Date(hold.expiresAt).getTime() - now.getTime()
 
@@ -239,14 +325,62 @@ function HeldPanel({ hold, onExpired }: { hold: Hold; onExpired: () => void }) {
   const total = formatPrice(hold.pricePerSeat * hold.seats.length)
 
   return (
-    <div className="space-y-2 rounded-lg border bg-card p-4">
-      <p className="text-sm">
-        Holding <span className="font-medium">{seatList}</span> · <span className="tabular-nums">{total}</span>
-      </p>
-      <p role="timer" aria-live="polite" className="text-sm tabular-nums">
-        <span className="text-muted-foreground">Time left: </span>
-        <span className="font-medium">{humanizeDuration(Math.max(0, remaining))}</span>
-      </p>
+    <div className="flex flex-wrap items-end justify-between gap-3 rounded-lg border bg-card p-4">
+      <div className="space-y-2">
+        <p className="text-sm">
+          Holding <span className="font-medium">{seatList}</span> ·{' '}
+          <span className="tabular-nums">{total}</span>
+        </p>
+        <p role="timer" aria-live="polite" className="text-sm tabular-nums">
+          <span className="text-muted-foreground">Time left: </span>
+          <span className="font-medium">{humanizeDuration(Math.max(0, remaining))}</span>
+        </p>
+      </div>
+
+      <Button onClick={onConfirm} disabled={confirming}>
+        {confirming ? 'Confirming…' : `Confirm and pay ${total}`}
+      </Button>
+    </div>
+  )
+}
+
+/**
+ * The booking confirmation, shown in place of the countdown once payment goes
+ * through. It answers the three things a buyer wants after paying — which Seats,
+ * which flight, and what they paid — from the Booking Ordering returned; the
+ * flight is the one this page already loaded.
+ */
+function BookingConfirmation({ flight, booking }: { flight: Flight; booking: Booking }) {
+  const seatList = booking.seats.map((seat) => seat.seatNumber).join(', ')
+
+  return (
+    <div role="status" className="space-y-4 rounded-lg border border-primary/40 bg-primary/5 p-5">
+      <div className="space-y-1">
+        <h3 className="font-heading text-lg font-semibold tracking-tight">Booking confirmed</h3>
+        <p className="text-muted-foreground text-sm">
+          Confirmed {formatDateTime(booking.confirmedAt)}. Your seats are yours.
+        </p>
+      </div>
+
+      <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[auto_1fr]">
+        <dt className="text-muted-foreground">Flight</dt>
+        <dd>
+          {formatRoute(flight.origin, flight.destination)} · {flight.flightNumber}
+        </dd>
+        <dt className="text-muted-foreground">Seats</dt>
+        <dd className="font-medium tabular-nums">{seatList}</dd>
+        <dt className="text-muted-foreground">Price paid</dt>
+        <dd className="font-medium tabular-nums">{formatPrice(booking.pricePaid)}</dd>
+      </dl>
+
+      <div className="flex flex-wrap gap-3">
+        <Button asChild>
+          <Link to="/bookings">View your bookings</Link>
+        </Button>
+        <Button asChild variant="outline">
+          <Link to="/">Back to flights</Link>
+        </Button>
+      </div>
     </div>
   )
 }
