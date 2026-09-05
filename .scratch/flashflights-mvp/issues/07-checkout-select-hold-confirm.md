@@ -4,7 +4,7 @@
 
 **Blocked by:** 04, 06.
 
-**Status:** ready-for-human (all acceptance criteria met; live authenticated pass against the compose stack still owed — see notes)
+**Status:** ready-for-human
 
 - [x] Signed-in User can select one or more Available Seats on the map.
 - [x] Requesting a Hold calls `Ordering` and reserves exactly those Seats.
