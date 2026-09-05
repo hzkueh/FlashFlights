@@ -1,6 +1,7 @@
 import { Route, Routes } from 'react-router'
 
 import { AppShell } from '@/components/app-shell'
+import { BookingsPage } from '@/routes/bookings-page'
 import { FlightPage } from '@/routes/flight-page'
 import { FlightsPage } from '@/routes/flights-page'
 import { LoginPage } from '@/routes/login-page'
@@ -22,10 +23,7 @@ export function App() {
       <Route element={<AppShell />}>
         <Route index element={<FlightsPage />} />
         <Route path="flights/:flightId" element={<FlightPage />} />
-        <Route
-          path="bookings"
-          element={<PlaceholderPage title="Bookings" issue="07 — checkout and confirmation" />}
-        />
+        <Route path="bookings" element={<BookingsPage />} />
         <Route
           path="notifications"
           element={<PlaceholderPage title="Notifications" issue="09 — watch and notify" />}

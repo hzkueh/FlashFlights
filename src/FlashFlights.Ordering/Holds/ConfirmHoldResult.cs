@@ -43,11 +43,18 @@ public abstract record ConfirmHoldResult
     public sealed record AlreadyConfirmed : ConfirmHoldResult;
 }
 
-/// <summary>What the caller gets back when a Hold is confirmed into a Booking.</summary>
+/// <summary>
+/// What the caller gets back when a Hold is confirmed into a Booking, and the
+/// same shape booking history lists. Carries <see cref="FlightId"/> — a Booking's
+/// Flight, taken from the Hold — so the SPA can name which Flight each Booking is
+/// for; Ordering owns no Flight metadata, so the route and departure a buyer reads
+/// are Catalog's to supply against this id.
+/// </summary>
 public sealed record BookingView(
     Guid BookingId,
     Guid HoldId,
     Guid UserId,
+    Guid FlightId,
     DateTimeOffset ConfirmedAt,
     decimal PricePaid,
     IReadOnlyList<BookedSeatView> Seats);

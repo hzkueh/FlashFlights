@@ -29,6 +29,15 @@ export function formatDeparture(iso: string): string {
   return departureFormat.format(new Date(iso))
 }
 
+/**
+ * A date and time a buyer reads back — a Booking's confirmed moment, say. The
+ * same rendering as a departure, named for the general case so its call sites
+ * don't read as "departure"; delegates rather than repeat the format.
+ */
+export function formatDateTime(iso: string): string {
+  return formatDeparture(iso)
+}
+
 /** "LHR → BCN" — the route as a buyer scans it. */
 export function formatRoute(origin: string, destination: string): string {
   return `${origin} → ${destination}`
