@@ -6,10 +6,10 @@
 
 **Status:** ready-for-agent
 
-- [ ] `Notifications` hosts a SignalR hub the frontend connects to.
-- [ ] Seat state changes published by `Ordering` are relayed to connected clients viewing that flight.
-- [ ] An open seat map updates without a refresh when another client holds, confirms, or lets a Hold expire.
-- [ ] Clients subscribe per-flight — a viewer isn't pushed changes for flights they aren't looking at.
+- [x] `Notifications` hosts a SignalR hub the frontend connects to.
+- [x] Seat state changes published by `Ordering` are relayed to connected clients viewing that flight.
+- [x] An open seat map updates without a refresh when another client holds, confirms, or lets a Hold expire.
+- [x] Clients subscribe per-flight — a viewer isn't pushed changes for flights they aren't looking at.
 - [ ] The connection recovers after a drop, and the map re-syncs to true state on reconnect.
 - [ ] A stale client never renders a Seat as takeable when it isn't — `Ordering` remains authoritative and rejects the request regardless.
 - [ ] **Record a rough two-window demo video as soon as this works.** Ticket 12 polishes it; do not leave creating it until then.
