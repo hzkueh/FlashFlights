@@ -4,7 +4,7 @@
 
 **Blocked by:** 03, 05.
 
-**Status:** in-review
+**Status:** ready-for-human
 
 - [x] `IFlightCatalogService` with `ListFlights()` and `GetFlight(id)`.
 - [x] `Catalog` consumes `SeatsHeld` / `SeatsReleased` / `SeatsConfirmed` from `Ordering` and maintains its seat-count projection.
