@@ -96,6 +96,33 @@ public class FlightCatalogServiceTests
         Assert.Null(flight!.SeatCounts);
     }
 
+    /// <summary>
+    /// ReferenceFare is display-only and optional (CONTEXT.md): when a Flight
+    /// carries one it rides the view through to the SPA, which derives the saving.
+    /// </summary>
+    [Fact]
+    public async Task A_reference_fare_is_carried_when_the_flight_has_one()
+    {
+        using var testDb = CatalogTestDb.Create();
+        var flightId = await testDb.SeedFlightAsync(referenceFare: 79.99m);
+
+        var flight = await ServiceFor(testDb).GetFlightAsync(flightId);
+
+        Assert.Equal(79.99m, flight!.ReferenceFare);
+    }
+
+    /// <summary>Most flights have none — the exception, not the rule — and then no saving is shown.</summary>
+    [Fact]
+    public async Task A_reference_fare_is_null_when_the_flight_has_none()
+    {
+        using var testDb = CatalogTestDb.Create();
+        var flightId = await testDb.SeedFlightAsync(referenceFare: null);
+
+        var flight = await ServiceFor(testDb).GetFlightAsync(flightId);
+
+        Assert.Null(flight!.ReferenceFare);
+    }
+
     [Fact]
     public async Task An_unknown_flight_id_returns_null()
     {

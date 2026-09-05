@@ -1,5 +1,6 @@
 import { Link } from 'react-router'
 
+import { FlashSaving } from '@/components/flash-saving'
 import { SaleStateBadge } from '@/components/sale-state-badge'
 import { useAsync } from '@/hooks/use-async'
 import { useNow } from '@/hooks/use-now'
@@ -72,7 +73,10 @@ function FlightCard({ flight }: { flight: Flight }) {
 
       <div className="mt-4 flex items-end justify-between gap-3">
         <div>
-          <p className="text-2xl font-semibold tabular-nums">{formatPrice(flight.flashPrice)}</p>
+          <div className="flex items-baseline gap-2">
+            <p className="text-2xl font-semibold tabular-nums">{formatPrice(flight.flashPrice)}</p>
+            <FlashSaving flight={flight} />
+          </div>
           <p className="text-muted-foreground text-xs">{remainingSeatsLabel(flight)}</p>
         </div>
         <p className="text-muted-foreground text-sm tabular-nums">

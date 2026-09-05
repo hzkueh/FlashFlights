@@ -38,7 +38,8 @@ internal sealed class CatalogTestDb : IDisposable
         DateTimeOffset? saleStartsAt = null,
         DateTimeOffset? saleEndsAt = null,
         int? totalSeats = 12,
-        DateTimeOffset? countsBaselineAt = null)
+        DateTimeOffset? countsBaselineAt = null,
+        decimal? referenceFare = null)
     {
         var flightId = Guid.NewGuid();
         await using var db = NewContext();
@@ -51,6 +52,7 @@ internal sealed class CatalogTestDb : IDisposable
             Destination = "BCN",
             DepartureAt = DateTimeOffset.UtcNow.AddDays(30),
             FlashPrice = 49.99m,
+            ReferenceFare = referenceFare,
             SaleStartsAt = saleStartsAt ?? DateTimeOffset.UtcNow.AddHours(-1),
             SaleEndsAt = saleEndsAt ?? DateTimeOffset.UtcNow.AddHours(5),
         });

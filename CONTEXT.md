@@ -17,6 +17,17 @@ allocation of Seats, running one sale window (SaleStartsAt/SaleEndsAt). One
 flash sale per Flight; not a separate concept from it.
 _Avoid: FlashSale, Route, Trip_
 
+**ReferenceFare**:
+The standing, non-sale price a Flight's FlashPrice is marked down from —
+what a Seat would cost outside the flash window. Display-only: it is never
+charged, never the price paid, and never the basis for a Hold. Exists solely
+so the UI can show how much a buyer saves; the discount percentage is
+computed, never stored — `(ReferenceFare − FlashPrice) / ReferenceFare`. A
+Flight may have none, in which case no saving is shown. Must be greater than
+FlashPrice when present.
+_Avoid: BasePrice, OriginalPrice, RegularPrice, ListPrice, MSRP, Discount
+(the saving is derived, not an entity)_
+
 **Seat**:
 An individual, uniquely identified position within a Flight's flash-sale
 allocation (e.g. `12A`). Fixed once seeded.

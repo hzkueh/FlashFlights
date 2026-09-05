@@ -6,9 +6,13 @@ pages (ticket 06) or checkout (ticket 07) against a live `docker compose up`
 stack, inject data directly into the two stores.
 
 Two flights' worth of state, three sale states:
-  FF100 LHR->BCN  Live      (2 Held, 2 Confirmed, rest Available)
-  FF210 SFO->JFK  Upcoming  (all Available)
-  FF330 CDG->FCO  Ended     (6 Confirmed)
+  FF100 LHR->BCN  Live      (2 Held, 2 Confirmed, rest Available)  ReferenceFare 229 -> Save 35%
+  FF210 SFO->JFK  Upcoming  (all Available)                       no ReferenceFare
+  FF330 CDG->FCO  Ended     (6 Confirmed)                         no ReferenceFare
+
+ReferenceFare is the exception, not the rule (CONTEXT.md) — only the Live flight
+carries one, so the demo shows both the struck-through "Save X%" badge and the
+plain-price flights that have no saving to show.
 
 The two stores by design (ADR-0001, ticket 06):
   - Catalog owns Flight metadata + the advisory SeatCounts projection -> SQLite
@@ -26,15 +30,26 @@ Gotchas this script encodes (both bit me once):
   2. Sale state + seat status are computed against TimeProvider.System (real
      wall clock), NOT the CLAUDE.md "today" date. Held holds use a 4h TTL so the
      HoldExpirySweep doesn't Release them mid-demo.
+  3. Catalog's SQLite runs in WAL journal mode, so recent writes -- including a
+     just-applied EF migration -- live in `catalog.db-wal` until a checkpoint
+     folds them into `catalog.db`. A plain `docker compose cp catalog:/data/
+     catalog.db` copies ONLY the main file and silently grabs a STALE schema/
+     rows while the container is running (this cost a debugging loop when the
+     copied db was missing a new column the running service had already added).
+     -> Always `docker compose stop catalog` FIRST: a clean shutdown checkpoints
+     and removes the -wal, so the cp-out is complete. (If you must copy while it
+     runs, also copy catalog.db-wal + catalog.db-shm, or force a checkpoint.)
 
 USAGE (from repo root, stack already up & healthy):
   SP=path/to/this/dir   # a writable working dir
-  docker compose cp catalog:/data/catalog.db "$SP/catalog.db"   # get live schema
+  # Stop catalog BEFORE copying out so WAL is checkpointed into catalog.db (gotcha 3).
+  docker compose stop catalog
+  docker compose cp catalog:/data/catalog.db "$SP/catalog.db"   # complete live schema
   python seed-demo-data.py "$SP"                                # writes ordering.sql + fills catalog.db
   docker compose exec -T ordering-db psql -U flashflights -d flashflights_ordering \
       -c 'TRUNCATE "SeatMovements","Bookings","Holds","Seats" CASCADE;'
   docker compose exec -T ordering-db psql -U flashflights -d flashflights_ordering -v ON_ERROR_STOP=1 < "$SP/ordering.sql"
-  docker compose stop catalog && docker compose cp "$SP/catalog.db" catalog:/data/catalog.db && docker compose start catalog
+  docker compose cp "$SP/catalog.db" catalog:/data/catalog.db && docker compose start catalog
 
 Note: restarting a container can drop Docker Desktop's host port-forward on the
 gateway (host curl -> HTTP 000 while the container is healthy internally). Fix:
@@ -53,12 +68,12 @@ def iso_sqlite(t):  # EF Core Microsoft.Data.Sqlite DateTimeOffset text: yyyy-MM
 COLS = ['A','B','C','D','E','F']
 ROWS = [1,2,3,4]
 
-def make_flight(num, o, d, price, dep, s_start, s_end):
-    return dict(id=str(uuid.uuid4()), num=num, o=o, d=d, price=price,
+def make_flight(num, o, d, price, dep, s_start, s_end, ref=None):
+    return dict(id=str(uuid.uuid4()), num=num, o=o, d=d, price=price, ref=ref,
                 dep=dep, ss=s_start, se=s_end, seats=[], held=set(), confirmed=set())
 
-# A: LIVE
-A = make_flight('FF100','LHR','BCN','149.00', now+dt.timedelta(days=2), now-dt.timedelta(hours=1), now+dt.timedelta(hours=3))
+# A: LIVE — the only flight with a ReferenceFare, so the "Save 35%" badge shows here.
+A = make_flight('FF100','LHR','BCN','149.00', now+dt.timedelta(days=2), now-dt.timedelta(hours=1), now+dt.timedelta(hours=3), ref='229.00')
 A['held'] = {'1A','1B'}
 A['confirmed'] = {'2C','2D'}
 # B: UPCOMING
@@ -108,8 +123,9 @@ cur = db.cursor()
 cur.execute("DELETE FROM FlightSeatCounts"); cur.execute("DELETE FROM Flights")
 for f in flights:
     # .upper() is load-bearing — see gotcha 1 in the module docstring.
-    cur.execute("INSERT INTO Flights(Id,FlightNumber,Origin,Destination,DepartureAt,FlashPrice,SaleStartsAt,SaleEndsAt) VALUES (?,?,?,?,?,?,?,?)",
-        (f['id'].upper(), f['num'], f['o'], f['d'], iso_sqlite(f['dep']), f['price'], iso_sqlite(f['ss']), iso_sqlite(f['se'])))
+    # ReferenceFare is nullable: None binds as SQL NULL, and those flights show no saving.
+    cur.execute("INSERT INTO Flights(Id,FlightNumber,Origin,Destination,DepartureAt,FlashPrice,ReferenceFare,SaleStartsAt,SaleEndsAt) VALUES (?,?,?,?,?,?,?,?,?)",
+        (f['id'].upper(), f['num'], f['o'], f['d'], iso_sqlite(f['dep']), f['price'], f['ref'], iso_sqlite(f['ss']), iso_sqlite(f['se'])))
     cur.execute("INSERT INTO FlightSeatCounts(FlightId,TotalSeats,AvailableSeats,HeldSeats,ConfirmedSeats,LastMovementAt) VALUES (?,?,?,?,?,?)",
         (f['id'].upper(), f['total'], f['availc'], f['heldc'], f['confc'], iso_sqlite(now-dt.timedelta(minutes=1))))
 db.commit(); db.close()

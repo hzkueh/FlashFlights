@@ -27,6 +27,17 @@ export interface Flight {
   destination: string
   departureAt: string
   flashPrice: number
+  /**
+   * The standing fare this flight is marked down from, or `null` when no saving
+   * is advertised (CONTEXT.md's ReferenceFare). Display only — the price paid is
+   * always {@link flashPrice}. The saving percentage is derived by
+   * `savingsPercent`, never sent by the server.
+   *
+   * Optional in the type: the server always sends the field (a value or `null`),
+   * but marking it optional lets code that predates it — a fixture or caller that
+   * builds a Flight without this key — still satisfy the type unchanged.
+   */
+  referenceFare?: number | null
   saleStartsAt: string
   saleEndsAt: string
   saleState: SaleState

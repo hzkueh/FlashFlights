@@ -26,7 +26,8 @@ public enum SaleState
 public sealed record SeatCountsView(int Total, int Available, int Held, int Confirmed);
 
 /// <summary>
-/// One Flight as the catalog serves it: its route, departure, FlashPrice, sale
+/// One Flight as the catalog serves it: its route, departure, FlashPrice, the
+/// optional <see cref="ReferenceFare"/> it is marked down from, sale
 /// window, the window's current <see cref="SaleState"/>, and its advisory
 /// <see cref="SeatCounts"/>. The raw SaleStartsAt/SaleEndsAt travel alongside the
 /// computed state so the SPA can run its own live countdown without asking the
@@ -42,6 +43,7 @@ public sealed record FlightView(
     string Destination,
     DateTimeOffset DepartureAt,
     decimal FlashPrice,
+    decimal? ReferenceFare,
     DateTimeOffset SaleStartsAt,
     DateTimeOffset SaleEndsAt,
     SaleState SaleState,

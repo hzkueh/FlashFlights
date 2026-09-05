@@ -18,6 +18,7 @@ public class CatalogSchemaTests
                 "FlightNumber",
                 "Id",
                 "Origin",
+                "ReferenceFare",
                 "SaleEndsAt",
                 "SaleStartsAt",
             ],

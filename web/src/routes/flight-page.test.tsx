@@ -23,6 +23,7 @@ function aFlight(overrides: Partial<Flight> = {}): Flight {
     destination: 'BCN',
     departureAt: '2026-10-01T09:30:00Z',
     flashPrice: 49.99,
+    referenceFare: null,
     saleStartsAt: '2026-09-05T11:00:00Z',
     saleEndsAt: '2026-09-05T17:00:00Z',
     saleState: 'Live',

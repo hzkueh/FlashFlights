@@ -48,6 +48,7 @@ public sealed class FlightCatalogService(CatalogDbContext db, TimeProvider clock
             flight.Destination,
             flight.DepartureAt,
             flight.FlashPrice,
+            flight.ReferenceFare,
             flight.SaleStartsAt,
             flight.SaleEndsAt,
             StateOf(flight, now),

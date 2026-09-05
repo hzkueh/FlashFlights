@@ -22,6 +22,7 @@ public sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> options)
             flight.Property(f => f.Origin).HasMaxLength(3).IsRequired();
             flight.Property(f => f.Destination).HasMaxLength(3).IsRequired();
             flight.Property(f => f.FlashPrice).HasPrecision(10, 2);
+            flight.Property(f => f.ReferenceFare).HasPrecision(10, 2);
 
             // The list page's default ordering: what is on sale, soonest first.
             flight.HasIndex(f => f.SaleStartsAt);
