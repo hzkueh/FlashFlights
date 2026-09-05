@@ -67,12 +67,16 @@ describe('applySeatChanges', () => {
 function fakeConnection() {
   const handlers = new Map<string, (change: SeatMapChange) => void>()
   const invocations: Array<[string, unknown]> = []
+  let reconnected: (() => void | Promise<void>) | undefined
   let started = false
   let stopped = false
 
   const connection = {
     on: (method: string, handler: (change: SeatMapChange) => void) => handlers.set(method, handler),
     off: (method: string) => handlers.delete(method),
+    onreconnected: (handler: () => void | Promise<void>) => {
+      reconnected = handler
+    },
     start: vi.fn(async () => {
       started = true
     }),
@@ -87,6 +91,7 @@ function fakeConnection() {
   return {
     connection,
     push: (change: SeatMapChange) => handlers.get('SeatsChanged')?.(change),
+    reconnect: async () => reconnected?.(),
     invocations,
     isStarted: () => started,
     isStopped: () => stopped,
@@ -99,9 +104,11 @@ describe('subscribeToSeatMap', () => {
     const fake = fakeConnection()
     let url = ''
 
-    subscribeToSeatMap('flight-1', () => {}, (hubPath) => {
-      url = hubPath
-      return fake.connection as never
+    subscribeToSeatMap('flight-1', () => {}, {
+      createConnection: (hubPath) => {
+        url = hubPath
+        return fake.connection as never
+      },
     })
 
     await vi.waitFor(() => expect(fake.invocations).toContainEqual(['Subscribe', 'flight-1']))
@@ -113,7 +120,9 @@ describe('subscribeToSeatMap', () => {
     const fake = fakeConnection()
     const changes: SeatMapChange[] = []
 
-    subscribeToSeatMap('flight-1', (change) => changes.push(change), () => fake.connection as never)
+    subscribeToSeatMap('flight-1', (change) => changes.push(change), {
+      createConnection: () => fake.connection as never,
+    })
 
     const change: SeatMapChange = {
       flightId: 'flight-1',
@@ -125,10 +134,34 @@ describe('subscribeToSeatMap', () => {
     expect(changes).toEqual([change])
   })
 
+  it('re-subscribes and re-syncs after a reconnect', async () => {
+    const fake = fakeConnection()
+    let reconnectedCalls = 0
+
+    subscribeToSeatMap('flight-1', () => {}, {
+      createConnection: () => fake.connection as never,
+      onReconnected: () => {
+        reconnectedCalls += 1
+      },
+    })
+
+    await vi.waitFor(() => expect(fake.invocations).toContainEqual(['Subscribe', 'flight-1']))
+    fake.invocations.length = 0
+
+    await fake.reconnect()
+
+    // A reconnect lands on a fresh connection id, so the flight group is re-joined
+    // before the caller re-syncs.
+    expect(fake.invocations).toContainEqual(['Subscribe', 'flight-1'])
+    expect(reconnectedCalls).toBe(1)
+  })
+
   it('detaches the handler and stops the connection on dispose', async () => {
     const fake = fakeConnection()
 
-    const subscription = subscribeToSeatMap('flight-1', () => {}, () => fake.connection as never)
+    const subscription = subscribeToSeatMap('flight-1', () => {}, {
+      createConnection: () => fake.connection as never,
+    })
     await subscription.dispose()
 
     expect(fake.hasHandler()).toBe(false)

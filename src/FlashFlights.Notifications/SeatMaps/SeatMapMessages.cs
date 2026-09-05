@@ -34,12 +34,11 @@ public sealed record SeatChange(Guid SeatId, LiveSeatStatus Status);
 ///
 /// <para>
 /// <see cref="OccurredAt"/> is Ordering's clock at the moment the movements were
-/// written, carried through unchanged as a high-water mark rather than a
-/// wall-clock. No viewer acts on it yet: over one ordered connection changes
-/// already arrive in the order they were made, so today's client applies each
-/// batch as it comes. It is threaded through now so the reconnect re-sync
-/// (ticket 08, item 5) can drop a change that predates the state it re-reads,
-/// without a later wire change.
+/// written, carried through unchanged as informational parity with the bus event
+/// this mirrors. No viewer acts on it: pushes arrive in order over one
+/// connection, and a client that dropped its connection re-reads Ordering's
+/// authoritative map on reconnect (ticket 08, item 5) rather than reconciling
+/// timestamps.
 /// </para>
 /// </summary>
 public sealed record SeatMapChanged(Guid FlightId, IReadOnlyList<SeatChange> Seats, DateTimeOffset OccurredAt);

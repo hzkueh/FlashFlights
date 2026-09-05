@@ -33,10 +33,10 @@ export interface SeatMapChange {
   flightId: string
   seats: SeatChange[]
   /**
-   * Ordering's clock when the movements were written. Carried on the wire but
-   * not consulted today: over one ordered connection changes arrive in order, so
-   * `applySeatChanges` applies each as it comes. Reserved for the reconnect
-   * re-sync (ticket 08, item 5) to discard a change that predates a fresh read.
+   * Ordering's clock when the movements were written — informational parity with
+   * the bus event this mirrors. The client does not consult it: pushes arrive in
+   * order over one connection, and a reconnect re-reads authoritative state
+   * outright rather than reconciling timestamps.
    */
   occurredAt: string
 }
@@ -70,20 +70,40 @@ export interface SeatMapSubscription {
 export type ConnectionFactory = (hubPath: string) => HubConnection
 
 const defaultConnectionFactory: ConnectionFactory = (hubPath) =>
-  new HubConnectionBuilder().withUrl(hubPath).build()
+  // withAutomaticReconnect: a dropped connection is retried on its own rather
+  // than leaving the map frozen at whatever it last saw.
+  new HubConnectionBuilder().withUrl(hubPath).withAutomaticReconnect().build()
+
+export interface SeatMapSubscriptionOptions {
+  /** Swaps the SignalR connection for a fake in tests. */
+  createConnection?: ConnectionFactory
+  /**
+   * Called after a dropped connection has re-subscribed to the Flight. The
+   * caller re-reads the authoritative map here: changes made while disconnected
+   * were never delivered, so the map must be re-synced to true state, not merely
+   * resumed. Re-subscribe happens first, so a change made during the re-read is
+   * still caught and folded in on top of it.
+   */
+  onReconnected?: () => void
+}
 
 /**
- * Opens a connection, subscribes to one Flight, and calls <paramref
- * name="onChange"/> for each batch of changes until disposed. Failures to
- * connect are swallowed — live updates are advisory, so a viewer keeps the
- * static map they already read rather than seeing an error. Recovering a dropped
- * connection and re-syncing to true state is a later step (ticket 08, item 5).
+ * Opens a connection, subscribes to one Flight, and calls `onChange` for each
+ * batch of changes until disposed. Failures to connect are swallowed — live
+ * updates are advisory, so a viewer keeps the static map they already read
+ * rather than seeing an error.
+ *
+ * A dropped connection is recovered automatically. Each recovery lands on a
+ * fresh connection id, so the Flight group is re-joined and `onReconnected`
+ * fires for the caller to re-sync to true state.
  */
 export function subscribeToSeatMap(
   flightId: string,
   onChange: (change: SeatMapChange) => void,
-  createConnection: ConnectionFactory = defaultConnectionFactory,
+  options: SeatMapSubscriptionOptions = {},
 ): SeatMapSubscription {
+  const { createConnection = defaultConnectionFactory, onReconnected } = options
+
   let connection: HubConnection
   try {
     connection = createConnection(SEAT_MAP_HUB_PATH)
@@ -96,8 +116,20 @@ export function subscribeToSeatMap(
 
   connection.on(SEATS_CHANGED, onChange)
 
-  // Chain subscribe onto the start so dispose can await the whole handshake and
-  // never race an Unsubscribe ahead of the Subscribe that it undoes.
+  // A reconnect gets a new connection id, so group membership is gone: re-join
+  // the Flight's group, then let the caller re-read the map it may have fallen
+  // behind. Advisory, so a failed re-subscribe just waits for the next reconnect.
+  connection.onreconnected(async () => {
+    try {
+      await connection.invoke(SUBSCRIBE, flightId)
+      onReconnected?.()
+    } catch {
+      // Swallowed — the next reconnect (or the static map) covers it.
+    }
+  })
+
+  // Chain subscribe onto the start so dispose can await the whole handshake
+  // rather than racing a stop ahead of the subscribe it would otherwise strand.
   const ready = connection
     .start()
     .then(() => connection.invoke(SUBSCRIBE, flightId))
