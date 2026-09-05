@@ -22,8 +22,16 @@ internal sealed class TestClock(DateTimeOffset now) : TimeProvider
 /// <summary>Seeding helpers shared by the Ordering integration tests.</summary>
 internal static class OrderingTestData
 {
-    public static HoldService HoldServiceFor(OrderingDbContext db, TimeProvider clock, TimeSpan? ttl = null) =>
-        new(db, clock, Options.Create(new HoldOptions { Ttl = ttl ?? TimeSpan.FromMinutes(2) }));
+    public static HoldService HoldServiceFor(
+        OrderingDbContext db,
+        TimeProvider clock,
+        TimeSpan? ttl = null,
+        ISeatMovementNotifier? notifier = null) =>
+        new(
+            db,
+            clock,
+            Options.Create(new HoldOptions { Ttl = ttl ?? TimeSpan.FromMinutes(2) }),
+            notifier ?? new NullSeatMovementNotifier());
 
     /// <summary>
     /// Seeds <paramref name="count"/> Seats on one Flight, all in row 1, and
