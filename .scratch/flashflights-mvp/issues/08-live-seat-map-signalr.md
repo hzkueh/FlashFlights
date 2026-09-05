@@ -11,5 +11,5 @@
 - [x] An open seat map updates without a refresh when another client holds, confirms, or lets a Hold expire.
 - [x] Clients subscribe per-flight — a viewer isn't pushed changes for flights they aren't looking at.
 - [x] The connection recovers after a drop, and the map re-syncs to true state on reconnect.
-- [ ] A stale client never renders a Seat as takeable when it isn't — `Ordering` remains authoritative and rejects the request regardless.
+- [x] A stale client never renders a Seat as takeable when it isn't — `Ordering` remains authoritative and rejects the request regardless.
 - [ ] **Record a rough two-window demo video as soon as this works.** Ticket 12 polishes it; do not leave creating it until then.
