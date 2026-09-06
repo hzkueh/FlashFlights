@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { useAsync } from '@/hooks/use-async'
+import { useLiveSeatMap } from '@/hooks/use-live-seat-map'
 import { useNow } from '@/hooks/use-now'
 import { useSession } from '@/hooks/use-session'
 import { type Booking, type ConfirmHoldOutcome, confirmHold } from '@/lib/bookings'
@@ -19,13 +20,10 @@ import { type Seat, type SeatStatus, getSeatMap } from '@/lib/seat-map'
 /**
  * The seat map turned interactive: a signed-in buyer selects Available Seats,
  * requests a Hold on exactly those, and then watches it count down. The map is
- * read live from Ordering once on load (ADR-0001); this buyer's own Hold is then
- * reflected from the granted Hold itself — its Seats render as "held by you" — so
- * the map needs no re-read to show what this buyer just did.
- *
- * Live cross-client updates (a Seat vanishing the instant someone else holds it,
- * a lapsed Hold reappearing) are ticket 08 — until then the map shows other
- * buyers' changes only on a reload, exactly as the browse-only page did.
+ * seeded from Ordering's one-off HTTP read (ADR-0001) and then kept live over
+ * SignalR (ticket 08), so a Seat another buyer holds, confirms, or lets expire
+ * repaints here without a refetch; this buyer's own Hold is reflected from the
+ * granted Hold itself — its Seats render as "held by you".
  */
 export function SeatCheckout({ flight }: { flight: Flight }) {
   const map = useAsync((signal) => getSeatMap(flight.id, signal), flight.id)
@@ -49,10 +47,24 @@ export function SeatCheckout({ flight }: { flight: Flight }) {
         (map.data.seats.length === 0 ? (
           <p className="text-muted-foreground text-sm">This flight has no seats yet.</p>
         ) : (
-          <Checkout flight={flight} seats={map.data.seats} />
+          <LiveCheckout flight={flight} initialSeats={map.data.seats} />
         ))}
     </div>
   )
+}
+
+/**
+ * Keeps the checkout's map live: seeds from the one-off HTTP read, then folds in
+ * other buyers' holds, confirms, and expiries as Notifications relays them over
+ * SignalR (ticket 08), so the grid a buyer selects from repaints without a
+ * refetch that would unmount the countdown. Live updates are advisory — a failed
+ * connection falls back to the seeded map, and Ordering's locked grant stays the
+ * sole authority (ADR-0001).
+ */
+function LiveCheckout({ flight, initialSeats }: { flight: Flight; initialSeats: Seat[] }) {
+  const seats = useLiveSeatMap(flight.id, initialSeats)
+
+  return <Checkout flight={flight} seats={seats} />
 }
 
 /**
@@ -80,9 +92,10 @@ function Checkout({ flight, seats }: { flight: Flight; seats: Seat[] }) {
   const [phase, setPhase] = useState<Phase>({ name: 'selecting' })
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
   const [notice, setNotice] = useState<Notice | null>(null)
-  // What a lost race told us about Seats others took, laid over the once-loaded
-  // map so a just-taken Seat renders as taken (not a stale Available button)
-  // without a refetch that would unmount this checkout. Ticket 08 makes it live.
+  // What a lost race told us about Seats others took, laid over the live map so a
+  // just-taken Seat renders as taken (not a stale Available button) the instant
+  // the 409 comes back — ahead of, and belt-and-braces with, the SignalR push
+  // that will report the same change.
   const [taken, setTaken] = useState<ReadonlyMap<string, SeatStatus>>(new Map())
 
   const shownSeats = taken.size === 0 ? seats : applyStatuses(seats, taken)
