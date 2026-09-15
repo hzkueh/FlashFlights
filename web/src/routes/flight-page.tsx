@@ -4,6 +4,7 @@ import { FlashSaving } from '@/components/flash-saving'
 import { SaleStateBadge } from '@/components/sale-state-badge'
 import { SeatCheckout } from '@/components/seat-checkout'
 import { Button } from '@/components/ui/button'
+import { WatchToggle } from '@/components/watch-toggle'
 import { useAsync } from '@/hooks/use-async'
 import { useNow } from '@/hooks/use-now'
 import { type Flight, getFlight } from '@/lib/catalog'
@@ -86,6 +87,8 @@ function FlightDetail({ flight }: { flight: Flight }) {
           </p>
         </div>
       </header>
+
+      <WatchToggle flight={flight} />
 
       <SeatCheckout flight={flight} />
     </section>

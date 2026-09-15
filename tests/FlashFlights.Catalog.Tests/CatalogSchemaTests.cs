@@ -20,6 +20,7 @@ public class CatalogSchemaTests
                 "Origin",
                 "ReferenceFare",
                 "SaleEndsAt",
+                "SaleStartHandledAt",
                 "SaleStartsAt",
             ],
             MappedPropertyNames<Flight>());

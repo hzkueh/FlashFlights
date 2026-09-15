@@ -1,6 +1,7 @@
 using FlashFlights.Catalog.Browsing;
 using FlashFlights.Catalog.Persistence;
 using FlashFlights.Catalog.Projection;
+using FlashFlights.Catalog.Sales;
 using FlashFlights.ServiceDefaults;
 using FlashFlights.ServiceDefaults.DataStores;
 using MassTransit;
@@ -27,6 +28,26 @@ builder.Services.AddSingleton(TimeProvider.System);
 
 builder.Services.AddScoped<SeatCountsProjector>();
 builder.Services.AddScoped<IFlightCatalogService, FlightCatalogService>();
+
+builder.Services.AddOptions<SaleStartSchedulerOptions>()
+    .Bind(builder.Configuration.GetSection(SaleStartSchedulerOptions.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(
+        options => options.Interval > TimeSpan.Zero,
+        "SaleStartScheduler:Interval must be positive; it is how long a watcher waits to be told.")
+    .ValidateOnStart();
+
+// A sale opening announces itself onto the bus for Notifications to turn into
+// alerts (ticket 09). Behind the notifier seam, so the announcer itself stays
+// unaware of MassTransit — and unlike the seat-movement publish, a failure here
+// is surfaced rather than swallowed: the announcement is the feature.
+builder.Services.AddScoped<IFlightSaleNotifier, MassTransitFlightSaleNotifier>();
+builder.Services.AddScoped<SaleStartAnnouncer>();
+
+// The scheduler that detects a Flight crossing its SaleStartsAt. Load-bearing:
+// nothing on any read path recomputes "this sale just opened", so a crossing
+// this loop never scans is an alert that never fires.
+builder.Services.AddHostedService<SaleStartScheduler>();
 
 var app = builder.Build();
 

@@ -21,3 +21,6 @@ data/
 ## Node (web/)
 node_modules/
 dist/
+
+## Local compose overrides (machine-specific port remaps)
+docker-compose.override.yml

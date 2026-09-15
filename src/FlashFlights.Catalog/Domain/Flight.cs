@@ -45,5 +45,23 @@ public sealed class Flight
 
     public DateTimeOffset SaleEndsAt { get; set; }
 
+    /// <summary>
+    /// When the sale-start scheduler settled this Flight's crossing of
+    /// <see cref="SaleStartsAt"/>, or null while the crossing is still ahead or
+    /// unhandled. Set once and never cleared: it is what keeps
+    /// <c>FlightSaleStarted</c> to one announcement per Flight however often the
+    /// scheduler runs (ticket 09).
+    ///
+    /// Written <em>after</em> a successful publish, so a failure between the two
+    /// costs a repeat rather than a silence — Notifications' inbox is unique per
+    /// (User, Flight), which absorbs the duplicate.
+    ///
+    /// Every crossing is announced, including one whose window had already
+    /// closed by the time it was seen: Catalog does not judge who should hear
+    /// about it, and the announcement carries <c>SaleEndsAt</c> so Notifications
+    /// can. See <see cref="Sales.SaleStartAnnouncer"/>.
+    /// </summary>
+    public DateTimeOffset? SaleStartHandledAt { get; set; }
+
     public FlightSeatCounts? SeatCounts { get; set; }
 }
