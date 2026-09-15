@@ -145,6 +145,22 @@ Ordering, and when?", the first question a refused Hold raises), and the window
 check still runs after the seat lock is taken — the lock is wasted on a refusal,
 but moving it would split the boundary rule across two clock reads.
 
+**Verified against the compose stack** (Ordering rebuilt, reseeded, driven through
+the gateway with a real token):
+
+| Sale state | Flight | Result |
+| --- | --- | --- |
+| Live | FF100 | `201` — Hold granted, then confirmed into a Booking at £149.00 |
+| Ended | FF330 | `409` `reason: saleNotOpen`, "Flash sale ended", no `seats` extension |
+| Upcoming | FF210 | `409` `reason: saleNotOpen`, "Flash sale not open yet" |
+| Live, seat taken | FF100 2C | `409` naming the Seat — the conflict path is unchanged |
+
+Ordering recorded exactly two windows, both learned off the bus: FF100 and FF330,
+the two whose crossings Catalog announced. FF210, still Upcoming, has no row —
+which is precisely why "no window heard" has to refuse. The live run also caught a
+log line claiming "holds are open for it" on an announcement whose window had
+already closed; it now states the window instead of asserting the conclusion.
+
 The SPA's own gate from the previous branch stays. It is not redundant: it keeps a
 buyer from being shown a button that cannot work, and the flow now handles the
 instant where page and service disagree instead of treating it as impossible.

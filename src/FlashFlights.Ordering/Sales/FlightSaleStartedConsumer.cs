@@ -34,8 +34,13 @@ public sealed class FlightSaleStartedConsumer(
     {
         await recorder.OnFlightSaleStartedAsync(context.Message, context.CancellationToken);
 
+        // States the window rather than claiming Holds are open: Catalog announces
+        // every crossing, including one whose window had already closed when it
+        // was first seen (ADR-0002), so "holds are open for it" would be a false
+        // line in the log for exactly the Flights someone is most likely to be
+        // reading the log about.
         logger.LogInformation(
-            "Flight {FlightNumber} ({FlightId}) is on sale until {SaleEndsAt}; holds are open for it.",
+            "Flight {FlightNumber} ({FlightId}) announced; holds are judged against its window, which ends {SaleEndsAt}.",
             context.Message.FlightNumber,
             context.Message.FlightId,
             context.Message.SaleEndsAt);
