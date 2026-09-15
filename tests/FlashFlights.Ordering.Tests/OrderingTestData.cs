@@ -34,11 +34,47 @@ internal static class OrderingTestData
             notifier ?? new NullSeatMovementNotifier());
 
     /// <summary>
+    /// A window no test's clock reaches, for the tests that are about the ledger
+    /// rather than the sale: an open sale is the background they assume.
+    /// </summary>
+    private static readonly DateTimeOffset SaleNeverEnds = new(2100, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
+    /// <summary>
     /// Seeds <paramref name="count"/> Seats on one Flight, all in row 1, and
     /// returns their ids in seat order. Seats are keyed by fresh Guids so two
     /// tests sharing the container never touch the same rows.
+    ///
+    /// <para>
+    /// The Flight's sale is announced as open too, because Ordering refuses a
+    /// Hold on a Flight it has heard no announcement for (ADR-0003) and every
+    /// ledger test here is about Seats, not the window. Pass
+    /// <paramref name="saleEndsAt"/> to seed a window a test intends to close;
+    /// <see cref="SeedUnannouncedFlightWithSeatsAsync"/> is the opposite case.
+    /// </para>
     /// </summary>
-    public static async Task<Guid[]> SeedFlightWithSeatsAsync(OrderingDbContext db, Guid flightId, int count)
+    public static Task<Guid[]> SeedFlightWithSeatsAsync(
+        OrderingDbContext db,
+        Guid flightId,
+        int count,
+        DateTimeOffset? saleEndsAt = null) =>
+        SeedSeatsAsync(db, flightId, count, saleEndsAt ?? SaleNeverEnds);
+
+    /// <summary>
+    /// Seeds Seats on a Flight whose sale-start announcement has never reached
+    /// Ordering — an Upcoming sale, or one whose announcement is still in flight.
+    /// The case ADR-0003 decided to refuse.
+    /// </summary>
+    public static Task<Guid[]> SeedUnannouncedFlightWithSeatsAsync(
+        OrderingDbContext db,
+        Guid flightId,
+        int count) =>
+        SeedSeatsAsync(db, flightId, count, saleEndsAt: null);
+
+    private static async Task<Guid[]> SeedSeatsAsync(
+        OrderingDbContext db,
+        Guid flightId,
+        int count,
+        DateTimeOffset? saleEndsAt)
     {
         var seats = Enumerable.Range(0, count)
             .Select(index => new Seat
@@ -51,6 +87,17 @@ internal static class OrderingTestData
             .ToArray();
 
         db.Seats.AddRange(seats);
+
+        if (saleEndsAt is { } endsAt)
+        {
+            db.SaleAnnouncements.Add(new SaleAnnouncement
+            {
+                FlightId = flightId,
+                SaleEndsAt = endsAt,
+                AnnouncedAt = endsAt.AddHours(-1),
+            });
+        }
+
         await db.SaveChangesAsync();
 
         return [.. seats.Select(seat => seat.Id)];

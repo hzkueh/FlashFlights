@@ -17,12 +17,47 @@ namespace FlashFlights.Ordering.Tests;
 /// </summary>
 public class OrderingSchemaTests
 {
+    /// <summary>
+    /// The four ledger tables, plus the one table that is not ledger:
+    /// SaleAnnouncements is what Ordering was <em>told</em> about another
+    /// service's Flights (ADR-0003), not a second copy of anything the ledger
+    /// answers. Any other arrival in this list is what the test is for.
+    /// </summary>
     [Fact]
-    public void Has_exactly_the_four_ledger_tables()
+    public void Has_the_four_ledger_tables_and_only_one_thing_beside_them()
     {
         Assert.Equal(
-            ["Bookings", "Holds", "SeatMovements", "Seats"],
+            ["Bookings", "Holds", "SaleAnnouncements", "SeatMovements", "Seats"],
             Model().GetEntityTypes().Select(type => type.GetTableName()!).Order().ToArray());
+    }
+
+    /// <summary>
+    /// One row per Flight, keyed by the Flight, is what makes recording an
+    /// at-least-once announcement idempotent — a redelivery collides with the row
+    /// it already wrote rather than giving one Flight two windows, which would
+    /// leave the Hold rule reading whichever it found first.
+    /// </summary>
+    [Fact]
+    public void A_flight_can_have_only_one_recorded_sale_window()
+    {
+        var announcement = Model().FindEntityType(typeof(SaleAnnouncement))!;
+
+        Assert.Equal(
+            [nameof(SaleAnnouncement.FlightId)],
+            announcement.FindPrimaryKey()!.Properties.Select(property => property.Name).ToArray());
+        Assert.Equal(["AnnouncedAt", "FlightId", "SaleEndsAt"], MappedPropertyNames<SaleAnnouncement>());
+    }
+
+    /// <summary>
+    /// Catalog owns Flights and Ordering stores none, so the FlightId on a
+    /// recorded window is a cross-service reference and nothing here may join to
+    /// it. A foreign key would mean this service had grown its own Flight table —
+    /// the coupling ADR-0003 consumes an event to avoid.
+    /// </summary>
+    [Fact]
+    public void A_recorded_sale_window_references_no_flight_this_store_owns()
+    {
+        Assert.Empty(Model().FindEntityType(typeof(SaleAnnouncement))!.GetForeignKeys());
     }
 
     /// <summary>

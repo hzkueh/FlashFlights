@@ -119,6 +119,85 @@ public class CreateHoldConcurrencyTests(OrderingDatabaseFixture fixture)
     }
 
     /// <summary>
+    /// The window closing under a burst of posts. Twenty buyers, each after their
+    /// own Seat — so no Seat contention can account for a refusal — hit
+    /// CreateHold together while the clock steps across SaleEndsAt beneath them.
+    /// Exactly the ten that read an instant inside the window get their Hold, and
+    /// the ledger is left with ten Held movements, not twenty.
+    ///
+    /// <para>
+    /// The invariant underneath the counts is the one that matters: no Hold exists
+    /// whose CreatedAt is at or after the close. It holds because the window is
+    /// judged against the same clock read that stamps the Hold (ADR-0003) — split
+    /// those into two reads and this test says so, because each contender would
+    /// then consume two of the clock's steps.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Holds_posted_as_the_window_closes_are_granted_only_inside_it()
+    {
+        const int InsideTheWindow = Contenders / 2;
+        var saleEndsAt = Now.AddHours(1);
+
+        await using var setup = fixture.NewDbContext();
+        var flightId = Guid.NewGuid();
+        var seatIds = await OrderingTestData.SeedFlightWithSeatsAsync(setup, flightId, Contenders, saleEndsAt);
+
+        var clock = new ClosingClock(saleEndsAt, InsideTheWindow);
+
+        EnsureThreadPoolCanRun(Contenders);
+        using var startLine = new Barrier(Contenders);
+
+        var attempts = Enumerable.Range(0, Contenders).Select(index => Task.Run(async () =>
+        {
+            await using var db = fixture.NewDbContext();
+            var service = OrderingTestData.HoldServiceFor(db, clock);
+
+            startLine.SignalAndWait();
+
+            return await service.CreateHoldAsync(
+                new CreateHoldRequest(flightId, [seatIds[index]], Guid.NewGuid(), PricePerSeat: 49.99m));
+        })).ToArray();
+
+        var results = await Task.WhenAll(attempts);
+
+        Assert.Equal(InsideTheWindow, results.OfType<CreateHoldResult.Granted>().Count());
+        Assert.Equal(
+            Contenders - InsideTheWindow,
+            results.OfType<CreateHoldResult.SaleNotOpen>().Count());
+
+        await using var verify = fixture.NewDbContext();
+
+        // No Hold on this Flight was stamped at or after the close, however the
+        // posts interleaved.
+        Assert.Empty(await verify.Holds
+            .Where(hold => hold.FlightId == flightId && hold.CreatedAt >= saleEndsAt)
+            .ToListAsync());
+
+        Assert.Equal(
+            InsideTheWindow,
+            await verify.SeatMovements.CountAsync(
+                movement => seatIds.Contains(movement.SeatId) && movement.Type == SeatMovementType.Held));
+    }
+
+    /// <summary>
+    /// A clock that steps across the closing instant: the first
+    /// <paramref name="readsInsideTheWindow"/> reads land a second inside the
+    /// window and every read after that lands exactly on the close. Which
+    /// contender gets which read is the race; how many of each there are is not,
+    /// so the assertions can be exact.
+    /// </summary>
+    private sealed class ClosingClock(DateTimeOffset saleEndsAt, int readsInsideTheWindow) : TimeProvider
+    {
+        private int _reads;
+
+        public override DateTimeOffset GetUtcNow() =>
+            Interlocked.Increment(ref _reads) <= readsInsideTheWindow
+                ? saleEndsAt.AddSeconds(-1)
+                : saleEndsAt;
+    }
+
+    /// <summary>
     /// Raises the pool's minimum worker count so the barrier's participants can
     /// all block at once. Without this the pool injects threads roughly one per
     /// second, so a barrier wider than the default minimum turns a sub-second

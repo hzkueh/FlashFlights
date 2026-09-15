@@ -191,6 +191,41 @@ describe('the checkout flow', () => {
   })
 
   /**
+   * The page gates the hold button on the sale being Live, but it recomputes that
+   * from the flight it was served — so a window that closes under an open page,
+   * or a sale Ordering has not yet heard open, can still get a post through.
+   * Ordering is where the rule is kept (ADR-0003), and its refusal has to land as
+   * something other than a lost race: there are no other seats to try, so the
+   * selection is dropped rather than left lit under a button that will not work.
+   */
+  it("tells the buyer the sale is not open when Ordering refuses the hold", async () => {
+    renderCheckout({
+      [HOLDS_PATH]: async () =>
+        Response.json(
+          {
+            title: 'Flash sale ended',
+            detail: "This flight's flash sale has closed, so its seats are no longer on offer at the flash price.",
+            reason: 'saleNotOpen',
+          },
+          { status: 409 },
+        ),
+    })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Seat 1A, Available' }))
+    await userEvent.click(screen.getByRole('button', { name: /hold 1 seat/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/flash sale has closed/i)
+
+    // Nothing stays selected: no other seat would have fared better, so a
+    // selection bar offering another hold would only fail again.
+    expect(screen.getByRole('button', { name: 'Seat 1A, Available' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+    expect(screen.queryByRole('button', { name: /hold 1 seat/i })).not.toBeInTheDocument()
+  })
+
+  /**
    * The live map's whole problem: a seat repainting silently is indistinguishable
    * from a seat that was always taken. The one that moved says so, and — just as
    * importantly — the ones that did not stay quiet, so the highlight means

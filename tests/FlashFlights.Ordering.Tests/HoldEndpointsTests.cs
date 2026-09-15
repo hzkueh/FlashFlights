@@ -81,6 +81,51 @@ public class HoldEndpointsTests
     }
 
     /// <summary>
+    /// The refusal ticket 13 adds, at the edge the buyer meets. It must reach the
+    /// SPA as something it can render — a 409 with a <c>reason</c> it can branch
+    /// on, distinct from the seat conflict beside it — rather than a bare 400 that
+    /// reads as "you typed something wrong" or, as before this ticket, a 201.
+    /// </summary>
+    [Theory]
+    [InlineData(SaleWindowState.Ended)]
+    [InlineData(SaleWindowState.NotStarted)]
+    public async Task A_hold_on_a_flight_whose_sale_is_not_open_is_refused_distinguishably(SaleWindowState state)
+    {
+        await using var host = await StartAsync(new CreateHoldResult.SaleNotOpen(state));
+
+        var body = JsonSerializer.Serialize(new
+        {
+            flightId = Guid.NewGuid(),
+            seatIds = new[] { Guid.NewGuid() },
+            pricePerSeat = 49.99m,
+        });
+        var request = new HttpRequestMessage(HttpMethod.Post, HoldEndpoints.BasePath)
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json"),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", MintToken(Guid.NewGuid()));
+
+        var response = await host.Client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(HoldEndpoints.SaleNotOpenReason, problem.RootElement.GetProperty("reason").GetString());
+
+        // No blocking Seats travel on this one: no other Seat would have fared
+        // better, so an SPA branching on `seats` must not mistake it for a race.
+        Assert.False(problem.RootElement.TryGetProperty("seats", out _));
+
+        // The prose still distinguishes the two — an ended sale is stated
+        // outright, while the other hedges, because Ordering never learns
+        // SaleStartsAt and so cannot tell a sale still to come from one whose
+        // announcement is a moment behind.
+        var detail = problem.RootElement.GetProperty("detail").GetString();
+        Assert.Contains(state == SaleWindowState.Ended ? "has closed" : "not on offer", detail);
+        Assert.Equal(state != SaleWindowState.Ended, detail!.Contains("try again in a moment"));
+    }
+
+    /// <summary>
     /// An unauthenticated POST to the exact path the gateway forwards must be
     /// rejected by auth (401), not lost by routing (404). A 404 here is the
     /// trailing-slash trap: the endpoint registered at /holds/ and the forwarded

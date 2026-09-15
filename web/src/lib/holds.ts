@@ -3,12 +3,14 @@ import type { SeatStatus } from '@/lib/seat-map'
 
 /**
  * The SPA's side of Ordering's Hold endpoint. Requesting a Hold is the one write
- * on the browse path, and its whole subtlety is in telling three failures apart:
+ * on the browse path, and its whole subtlety is in telling four failures apart:
  * a well-formed request that *lost a race* for Seats someone else holds (retry
- * on other Seats might win), a *malformed* request (retrying the same thing
- * cannot help), and an *unreachable* gateway (nothing to do with the request).
- * Ordering already answers each with its own status; this maps them onto an
- * outcome the checkout branches on, rather than re-deriving them from prose.
+ * on other Seats might win), one refused because the flash *sale is not open*
+ * (no Seat would have fared better), a *malformed* request (retrying the same
+ * thing cannot help), and an *unreachable* gateway (nothing to do with the
+ * request). Ordering already answers each with its own status; this maps them
+ * onto an outcome the checkout branches on, rather than re-deriving them from
+ * prose.
  */
 
 export const HOLDS_PATH = '/api/ordering/holds'
@@ -45,15 +47,23 @@ export interface CreateHoldRequest {
 }
 
 /**
- * The four ways a request to hold can end, kept apart because the buyer is told
+ * The five ways a request to hold can end, kept apart because the buyer is told
  * a different thing for each and only one of them (`conflict`) is worth
  * retrying on other Seats.
  */
 export type CreateHoldOutcome =
   | { status: 'granted'; hold: Hold }
   | { status: 'conflict'; seats: ConflictingSeat[] }
+  | { status: 'saleNotOpen'; message: string }
   | { status: 'invalid'; message: string }
   | { status: 'error'; message: string }
+
+/**
+ * The `reason` Ordering puts on a Hold it refused because the flash price is not
+ * on offer — the sale has ended, or has not opened yet. It shares 409 with a lost
+ * race, so this token is what tells the two apart without reading the prose.
+ */
+const SALE_NOT_OPEN = 'saleNotOpen'
 
 /** Shown when a well-formed request failed for a reason the SPA cannot name precisely. */
 export const HOLD_FAILED = 'Something went wrong holding those seats. Please try again.'
@@ -61,6 +71,7 @@ export const HOLD_FAILED = 'Something went wrong holding those seats. Please try
 interface ProblemDetails {
   detail?: string
   errors?: Record<string, string[]>
+  reason?: string
   seats?: ConflictingSeat[]
 }
 
@@ -97,6 +108,14 @@ export async function createHold(
   }
 
   const problem = (await readJson(response)) as ProblemDetails | null
+
+  if (response.status === 409 && problem?.reason === SALE_NOT_OPEN) {
+    // Ordering's own word on the window, which beats the page's: the page
+    // recomputes the sale state from the flight it was served, and this is the
+    // answer when the two disagree — the window closed under an open page, or
+    // Ordering has not yet heard the sale open. Its prose already says which.
+    return { status: 'saleNotOpen', message: problem.detail ?? HOLD_FAILED }
+  }
 
   if (response.status === 409 && problem?.seats !== undefined) {
     return { status: 'conflict', seats: problem.seats }

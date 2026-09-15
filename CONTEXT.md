@@ -58,7 +58,11 @@ _Avoid: Availability, Inventory, Stock_
 A buyer's in-progress reservation on one or more specific Seats, created by
 posting Held SeatMovements for them. Carries an expiry (TTL). Resolves into
 either a Booking (Confirmed) or expiry (Released) — its status is computed
-from whether a resolving SeatMovement exists yet, never stored directly.
+from whether a resolving SeatMovement exists yet, never stored directly. A
+Hold is a claim on a Flight's **FlashPrice**, so it can only be granted while
+that Flight's sale window is open — and, once granted, it survives the window
+closing under it and may still be confirmed until its TTL runs out. See
+[ADR-0003](docs/adr/0003-ordering-refuses-a-hold-it-has-no-sale-window-for.md).
 _Avoid: Reservation, Cart, Basket_
 
 **Booking**:

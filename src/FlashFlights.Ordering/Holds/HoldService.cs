@@ -11,6 +11,13 @@ namespace FlashFlights.Ordering.Holds;
 /// from a stored column (ADR-0001), and the grant is all-or-nothing: the loser
 /// of a race for any one Seat gets a clean conflict and no movements are
 /// written.
+///
+/// <para>
+/// Two things gate a grant, and both live here rather than in the page that
+/// offers it: the Seats must be free, and the Flight's flash price must be on
+/// offer — a Hold is a claim on that price, so the sale window is checked from
+/// the announcement Ordering consumed, never by asking Catalog (ADR-0003).
+/// </para>
 /// </summary>
 public sealed class HoldService(
     OrderingDbContext db,
@@ -55,11 +62,36 @@ public sealed class HoldService(
             return new CreateHoldResult.Malformed(SeatsNotOfFlight(notOfFlight));
         }
 
+        // What Ordering has been told about this Flight's sale, read outside the
+        // transaction: the row is written once by the announcement's consumer and
+        // never updated, so there is nothing here for the seat lock to protect —
+        // and reading it inside would spend a round trip while holding locks. It
+        // is judged against the clock below, not here.
+        var announcement = await db.SaleAnnouncements
+            .FirstOrDefaultAsync(a => a.FlightId == request.FlightId, cancellationToken);
+
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
 
         await LockSeatsAsync(request.SeatIds, cancellationToken);
 
         var now = clock.GetUtcNow();
+
+        // The window is judged against the same `now` that stamps the Hold below,
+        // so a request cannot pass the check at one instant and be granted as of a
+        // later one — the sub-second form of the very gap this closes (ADR-0003).
+        // It comes before the Seats are judged because it is the truth about the
+        // Flight: with no flash price on offer, no Seat would have fared better,
+        // and "try other seats" would send the buyer nowhere.
+        var window = SaleWindowRules.StateOf(announcement, now);
+
+        if (window != SaleWindowState.Open)
+        {
+            // Nothing was appended, so the rollback is only tidiness — the same
+            // shape the conflict path takes below.
+            await transaction.RollbackAsync(cancellationToken);
+            return new CreateHoldResult.SaleNotOpen(window);
+        }
+
         var latest = await SeatLedger.NewestMovementsAsync(db, request.SeatIds, cancellationToken);
 
         var conflicts = request.SeatIds

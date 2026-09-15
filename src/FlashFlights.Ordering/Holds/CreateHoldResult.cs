@@ -1,13 +1,16 @@
+using FlashFlights.Ordering.Domain;
+
 namespace FlashFlights.Ordering.Holds;
 
 /// <summary>
-/// The three ways a <see cref="IHoldService.CreateHoldAsync"/> can end, kept as
+/// The four ways a <see cref="IHoldService.CreateHoldAsync"/> can end, kept as
 /// distinct types so the HTTP layer maps each to its own status code and the
 /// SPA can tell them apart. The distinction that matters:
 /// <see cref="Malformed"/> is a request that was wrong to begin with (a retry of
-/// the same thing cannot help — 400), while <see cref="Conflict"/> is a
-/// well-formed request that lost a race for Seats someone else holds (a retry on
-/// other Seats might — 409).
+/// the same thing cannot help — 400), while <see cref="Conflict"/> and
+/// <see cref="SaleNotOpen"/> are well-formed requests the Flight's own state
+/// refuses (409) — one because someone else holds the Seats, the other because
+/// the flash price is not on offer.
 /// </summary>
 public abstract record CreateHoldResult
 {
@@ -33,6 +36,22 @@ public abstract record CreateHoldResult
     /// partial grant never happens: either every Seat is held or none is.
     /// </summary>
     public sealed record Conflict(IReadOnlyList<ConflictingSeat> Seats) : CreateHoldResult;
+
+    /// <summary>
+    /// The Flight's flash price is not on offer, so there is nothing to claim: a
+    /// Hold is a claim on a flash price (CONTEXT.md) and the window is the offer.
+    /// Distinct from <see cref="Conflict"/> because it is about the Flight rather
+    /// than the Seats — no other Seat would have fared better — and distinct from
+    /// <see cref="Malformed"/> because the request was well formed and, for a sale
+    /// still to come, worth making again later.
+    ///
+    /// <para>
+    /// <paramref name="State"/> is never <see cref="SaleWindowState.Open"/>: this
+    /// result exists only for the two refusals, and carries which one so the buyer
+    /// is told whether the sale is over or has not started (ADR-0003).
+    /// </para>
+    /// </summary>
+    public sealed record SaleNotOpen(SaleWindowState State) : CreateHoldResult;
 }
 
 /// <summary>What the caller gets back when a Hold is granted.</summary>
