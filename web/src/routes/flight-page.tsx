@@ -4,9 +4,10 @@ import { SaleCountdown } from '@/components/countdown'
 import { FlashSaving } from '@/components/flash-saving'
 import { SaleStateBadge } from '@/components/sale-state-badge'
 import { SeatCheckout } from '@/components/seat-checkout'
-import { StatePanel } from '@/components/state-panel'
+import { GatewayErrorPanel, StatePanel } from '@/components/state-panel'
 import { Button } from '@/components/ui/button'
-import { LoadingPanel, Skeleton } from '@/components/ui/skeleton'
+import { LoadingPanel } from '@/components/loading-panel'
+import { Skeleton } from '@/components/ui/skeleton'
 import { WatchToggle } from '@/components/watch-toggle'
 import { useAsync } from '@/hooks/use-async'
 import { type Flight, getFlight } from '@/lib/catalog'
@@ -32,14 +33,11 @@ export function FlightPage() {
 
   if (flight.status === 'error') {
     return (
-      <StatePanel tone="error" title="Couldn't load this flight.">
-        <p className="text-muted-foreground text-sm">
-          Check the gateway is running, then try again.
-        </p>
+      <GatewayErrorPanel what="this flight">
         <Button asChild variant="outline">
           <Link to="/">Back to flights</Link>
         </Button>
-      </StatePanel>
+      </GatewayErrorPanel>
     )
   }
 
@@ -55,9 +53,6 @@ function FlightNotFound() {
     <section className="space-y-4">
       <h1 className="font-heading text-2xl font-semibold tracking-tight">Flight not found</h1>
       <StatePanel title="This flight isn't in the catalog.">
-        <p className="text-muted-foreground text-sm">
-          It may have been withdrawn since you last saw it.
-        </p>
         <Button asChild variant="outline">
           <Link to="/">Back to flights</Link>
         </Button>

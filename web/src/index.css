@@ -75,12 +75,14 @@
 
     /* Seat statuses and countdown urgency: named for what they mean, so the
        seat map and the countdowns pick a token rather than a colour, and a
-       theme change is edited here rather than across components. */
-    --seat-held: oklch(0.88 0.1 82);
+       theme change is edited here rather than across components. Every pair
+       below clears WCAG AA (4.5:1) against the surface it sits on — a Confirmed
+       seat is meant to read as gone, not as unreadable. */
+    --seat-held: oklch(0.88 0.1 82);           /* 7.07:1 with its foreground */
     --seat-held-foreground: oklch(0.38 0.08 68);
-    --seat-confirmed: oklch(0.93 0.006 250);
-    --seat-confirmed-foreground: oklch(0.62 0.015 250);
-    --urgent: oklch(0.58 0.15 62);
+    --seat-confirmed: oklch(0.93 0.006 250);   /* 5.55:1 with its foreground */
+    --seat-confirmed-foreground: oklch(0.47 0.015 250);
+    --urgent: oklch(0.53 0.15 55);             /* 5.39:1 on the background */
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
@@ -117,11 +119,11 @@
     --input: oklch(1 0 0 / 16%);
     --ring: oklch(0.7 0.15 252);
 
-    --seat-held: oklch(0.52 0.1 74);
+    --seat-held: oklch(0.52 0.1 74);           /* 5.00:1 with its foreground */
     --seat-held-foreground: oklch(0.96 0.04 92);
-    --seat-confirmed: oklch(0.3 0.012 252);
-    --seat-confirmed-foreground: oklch(0.63 0.015 250);
-    --urgent: oklch(0.8 0.13 78);
+    --seat-confirmed: oklch(0.3 0.012 252);    /* 5.50:1 with its foreground */
+    --seat-confirmed-foreground: oklch(0.72 0.015 250);
+    --urgent: oklch(0.8 0.13 78);              /* 10.17:1 on the background */
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);

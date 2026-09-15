@@ -49,6 +49,11 @@ transition. The countdown still changes colour and a changed seat still takes it
 ring — a reader who asked for less movement still has to see that time is running
 out, and which seat went.
 
+On item 4, "every page" means every page that loads something. The two auth
+pages have a pending state and an error state but no empty state, which a form
+cannot have; `not-found-page` is itself an empty state. The four loading pages —
+flights, flight detail, bookings, notifications — have all three.
+
 Two things this ticket changed beyond its own wording, both in service of item 4:
 
 - **The inbox had no loading or error state at all.** `useNotifications` swallowed
@@ -70,6 +75,40 @@ Also fixed a latent cross-suite flake this work exposed. Suites stub
 *deleted* the property between tests, since jsdom has none — anything rendering
 in that gap failed for a reason unrelated to its own suite. `test/setup.ts` now
 installs a plain baseline that unstubbing restores to.
+
+## Review fixes
+
+The two-axis review caught three defects worth naming, all now fixed and
+covered:
+
+- **Every sale countdown was a live region.** `aria-live` was set from a ternary
+  with no absent branch, so each flight card's countdown announced itself every
+  second — the exact opposite of what its own comment claimed. Only a Hold's
+  timer is announced now, and only once critical.
+- **The seat beat never played for the change it exists for.** Becoming Held
+  turns a selectable button into inert text, and React rebuilds the DOM node when
+  the element type changes; Framer reads a rebuilt node as a mount, which
+  `initial: false` suppresses. Available-to-Held therefore animated nothing. The
+  animated element is now a wrapper that outlives the swap, and a test asserts
+  that node identity survives the change rather than just that the seat is
+  marked.
+- **Confirmed seats failed WCAG AA.** The new tokens were 2.96:1 light and 3.90:1
+  dark, worse than the greyscale they replaced. Retuned to 5.55:1 and 5.50:1;
+  every shipped seat and countdown pair now clears 4.5:1, and the ratios are
+  recorded beside the tokens.
+
+Also from the review: the five "couldn't load" panels became one
+`GatewayErrorPanel`, `LoadingPanel` moved out of `components/ui/` (which holds
+shadcn primitives) beside `StatePanel`, the notifications sign-in prompt joined
+the same panel treatment as the bookings one, and the lone
+`window.location.reload()` retry went — it was the only page offering one and
+the only full-document reload in the codebase.
+
+The palette rebrand was flagged as scope creep and kept deliberately: the
+ticket's own headline is that the app should look "like a considered product in
+both themes", and a default greyscale shadcn palette is the thing that reads as
+unconsidered. `FlightNotFound`'s invented line about a flight being "withdrawn"
+was removed — withdrawal is not a concept this domain has.
 
 The one thing not exercised end to end in a browser: the Hold countdown's own
 urgency treatment, which needs a signed-in hold against a live stack (no runtime

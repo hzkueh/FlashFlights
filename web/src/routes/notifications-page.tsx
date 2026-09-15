@@ -1,9 +1,10 @@
 import { Link } from 'react-router'
 
-import { StatePanel } from '@/components/state-panel'
+import { GatewayErrorPanel, StatePanel } from '@/components/state-panel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { LoadingPanel, Skeleton } from '@/components/ui/skeleton'
+import { LoadingPanel } from '@/components/loading-panel'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useNotifications } from '@/hooks/use-notifications'
 import { useSession } from '@/hooks/use-session'
 import { formatDateTime } from '@/lib/format'
@@ -23,12 +24,14 @@ export function NotificationsPage() {
     return (
       <section className="space-y-4">
         <h1 className="font-heading text-2xl font-semibold tracking-tight">Notifications</h1>
-        <p className="text-muted-foreground text-sm">
-          <Link to="/login" className="underline underline-offset-4 hover:text-foreground">
-            Sign in
-          </Link>{' '}
-          to see your alerts.
-        </p>
+        <StatePanel>
+          <p className="text-sm">
+            <Link to="/login" className="underline underline-offset-4 hover:text-foreground">
+              Sign in
+            </Link>{' '}
+            to see your alerts.
+          </p>
+        </StatePanel>
       </section>
     )
   }
@@ -46,11 +49,7 @@ export function NotificationsPage() {
         // Only when there is nothing to fall back on. A re-read that fails while
         // alerts are already on screen leaves them there — an unreachable gateway
         // is not a reason to hide what this user has already been sent.
-        <StatePanel tone="error" title="Couldn't load your alerts.">
-          <p className="text-muted-foreground text-sm">
-            Check the gateway is running, then try again.
-          </p>
-        </StatePanel>
+        <GatewayErrorPanel what="your alerts" />
       ) : notifications.length === 0 ? (
         <StatePanel title="No alerts yet.">
           <p className="text-muted-foreground text-sm">

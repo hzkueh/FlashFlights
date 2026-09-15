@@ -3,9 +3,10 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 
 import { Countdown } from '@/components/countdown'
-import { StatePanel } from '@/components/state-panel'
+import { GatewayErrorPanel, StatePanel } from '@/components/state-panel'
 import { Button } from '@/components/ui/button'
-import { LoadingPanel, Skeleton } from '@/components/ui/skeleton'
+import { LoadingPanel } from '@/components/loading-panel'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useAsync } from '@/hooks/use-async'
 import { useLiveSeatMap } from '@/hooks/use-live-seat-map'
 import { useNow } from '@/hooks/use-now'
@@ -46,11 +47,7 @@ export function SeatCheckout({ flight }: { flight: Flight }) {
       {map.status === 'loading' && <SeatMapSkeleton />}
 
       {map.status === 'error' && (
-        <StatePanel tone="error" title="Couldn't load the seat map.">
-          <p className="text-muted-foreground text-sm">
-            It updates live once Ordering is reachable.
-          </p>
-        </StatePanel>
+        <GatewayErrorPanel what="the seat map" hint="It updates live once Ordering is reachable." />
       )}
 
       {map.status === 'ready' &&
@@ -551,69 +548,72 @@ function SeatCell({
   const reducedMotion = useReducedMotion()
   const flashing = justChanged && !reducedMotion
 
+  // Only Available Seats are selectable, and only while choosing; every other
+  // Seat is inert text, exactly as the browse-only map rendered it.
+  const selectable = interactive && !heldByYou && seat.status === 'Available'
+
   // The ring stays even when the scale beat is suppressed: a reader who asked for
   // less motion still needs to see which seat changed, and colour and a ring say
   // it without moving anything.
-  const motionProps = {
-    'data-changed': justChanged ? 'true' : 'false',
-    // No mount animation — on load every seat is new, and a cabin that animates
-    // itself into existence buries the one change that matters later.
-    initial: false,
-    animate: flashing ? FLASH : AT_REST,
-    transition: { duration: flashing ? 0.45 : 0.2, ease: 'easeOut' },
-  } as const
-
-  const changedRing = justChanged ? JUST_CHANGED_CELL : ''
+  const className = cn(
+    CELL_BASE,
+    heldByYou
+      ? HELD_BY_YOU_CELL
+      : selectable && selected
+        ? SELECTED_CELL
+        : selectable
+          ? `${STATUS_CELL.Available} cursor-pointer hover:border-primary`
+          : STATUS_CELL[seat.status],
+    justChanged && JUST_CHANGED_CELL,
+  )
 
   // A Seat this buyer is holding gets its own look even though the server reports
   // it Held like any other — the map cannot say who holds it, but the checkout can.
-  if (heldByYou) {
-    return (
-      <motion.span
-        {...motionProps}
-        data-status={seat.status}
-        aria-label={`Seat ${seat.seatNumber}, held by you`}
-        title={`${seat.seatNumber} — held by you`}
-        className={cn(CELL_BASE, HELD_BY_YOU_CELL, changedRing)}
-      >
-        {seat.column}
-      </motion.span>
-    )
-  }
-
-  // Only Available Seats are selectable, and only while choosing; every other
-  // Seat is inert text, exactly as the browse-only map rendered it.
-  if (interactive && seat.status === 'Available') {
-    return (
-      <motion.button
-        {...motionProps}
-        type="button"
-        aria-pressed={selected}
-        aria-label={`Seat ${seat.seatNumber}, Available`}
-        title={`${seat.seatNumber} — ${selected ? 'selected' : 'available'}`}
-        onClick={() => onToggle(seat.seatId)}
-        whileTap={reducedMotion ? undefined : { scale: 0.92 }}
-        className={cn(
-          CELL_BASE,
-          'cursor-pointer',
-          selected ? SELECTED_CELL : `${STATUS_CELL.Available} hover:border-primary`,
-          changedRing,
-        )}
-      >
-        {seat.column}
-      </motion.button>
-    )
-  }
-
-  return (
-    <motion.span
-      {...motionProps}
+  const inner = selectable ? (
+    <button
+      type="button"
+      aria-pressed={selected}
+      aria-label={`Seat ${seat.seatNumber}, Available`}
+      title={`${seat.seatNumber} — ${selected ? 'selected' : 'available'}`}
+      onClick={() => onToggle(seat.seatId)}
       data-status={seat.status}
-      aria-label={`Seat ${seat.seatNumber}, ${seat.status}`}
-      title={`${seat.seatNumber} — ${seat.status}`}
-      className={cn(CELL_BASE, STATUS_CELL[seat.status], changedRing)}
+      data-changed={justChanged ? 'true' : 'false'}
+      className={className}
     >
       {seat.column}
+    </button>
+  ) : (
+    <span
+      data-status={seat.status}
+      data-changed={justChanged ? 'true' : 'false'}
+      aria-label={
+        heldByYou ? `Seat ${seat.seatNumber}, held by you` : `Seat ${seat.seatNumber}, ${seat.status}`
+      }
+      title={heldByYou ? `${seat.seatNumber} — held by you` : `${seat.seatNumber} — ${seat.status}`}
+      className={className}
+    >
+      {seat.column}
+    </span>
+  )
+
+  return (
+    // The animated element is this wrapper, not the seat itself, and that is the
+    // whole point of it: becoming Held turns a selectable button into inert text,
+    // and React rebuilds the DOM node when the element type changes. Framer reads
+    // a rebuilt node as a mount, which `initial: false` suppresses — so animating
+    // the seat directly would skip the beat for Available-to-Held, precisely the
+    // change worth showing. The wrapper outlives the swap.
+    <motion.span
+      data-seat-cell={seat.seatNumber}
+      className="inline-flex shrink-0"
+      // No mount animation — on load every seat is new, and a cabin that animates
+      // itself into existence buries the one change that matters later.
+      initial={false}
+      animate={flashing ? FLASH : AT_REST}
+      transition={{ duration: flashing ? 0.45 : 0.2, ease: 'easeOut' }}
+      whileTap={selectable && !reducedMotion ? { scale: 0.92 } : undefined}
+    >
+      {inner}
     </motion.span>
   )
 }

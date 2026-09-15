@@ -25,12 +25,12 @@ export function useRecentlyChanged<T>(value: T, windowMs = DEFAULT_WINDOW_MS): b
   const [changed, setChanged] = useState(false)
   // Counts the moves rather than timing them: two changes inside the same
   // millisecond are still two, and the window restarts for the second.
-  const [move, setMove] = useState(0)
+  const [moveCount, setMoveCount] = useState(0)
 
   if (!Object.is(seen, value)) {
     setSeen(value)
     setChanged(true)
-    setMove((count) => count + 1)
+    setMoveCount((count) => count + 1)
   }
 
   useEffect(() => {
@@ -41,7 +41,7 @@ export function useRecentlyChanged<T>(value: T, windowMs = DEFAULT_WINDOW_MS): b
     const timer = setTimeout(() => setChanged(false), windowMs)
 
     return () => clearTimeout(timer)
-  }, [changed, move, windowMs])
+  }, [changed, moveCount, windowMs])
 
   return changed
 }

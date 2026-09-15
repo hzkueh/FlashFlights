@@ -4,9 +4,9 @@ import { Link } from 'react-router'
 import { SaleCountdown } from '@/components/countdown'
 import { FlashSaving } from '@/components/flash-saving'
 import { SaleStateBadge } from '@/components/sale-state-badge'
-import { StatePanel } from '@/components/state-panel'
-import { Button } from '@/components/ui/button'
-import { LoadingPanel, Skeleton } from '@/components/ui/skeleton'
+import { GatewayErrorPanel, StatePanel } from '@/components/state-panel'
+import { LoadingPanel } from '@/components/loading-panel'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useAsync } from '@/hooks/use-async'
 import { useReducedMotion } from '@/hooks/use-reduced-motion'
 import { type Flight, listFlights } from '@/lib/catalog'
@@ -33,14 +33,7 @@ export function FlightsPage() {
       {flights.status === 'loading' && <FlightListSkeleton />}
 
       {flights.status === 'error' && (
-        <StatePanel tone="error" title="Couldn't load the flights.">
-          <p className="text-muted-foreground text-sm">
-            Check the gateway is running, then try again.
-          </p>
-          <Button variant="outline" onClick={() => window.location.reload()}>
-            Try again
-          </Button>
-        </StatePanel>
+        <GatewayErrorPanel what="the flights" />
       )}
 
       {flights.status === 'ready' &&

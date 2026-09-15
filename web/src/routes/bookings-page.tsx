@@ -1,8 +1,9 @@
 import { Link, useNavigate } from 'react-router'
 
-import { StatePanel } from '@/components/state-panel'
+import { GatewayErrorPanel, StatePanel } from '@/components/state-panel'
 import { Button } from '@/components/ui/button'
-import { LoadingPanel, Skeleton } from '@/components/ui/skeleton'
+import { LoadingPanel } from '@/components/loading-panel'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useAsync } from '@/hooks/use-async'
 import { useSession } from '@/hooks/use-session'
 import { type BookingWithFlight, loadBookingHistory } from '@/lib/bookings'
@@ -54,11 +55,7 @@ function BookingHistory({ token, userId }: { token: string; userId: string }) {
 
   if (history.status === 'error') {
     return (
-      <StatePanel tone="error" title="Couldn't load your bookings.">
-        <p className="text-muted-foreground text-sm">
-          Check the gateway is running, then try again.
-        </p>
-      </StatePanel>
+      <GatewayErrorPanel what="your bookings" />
     )
   }
 

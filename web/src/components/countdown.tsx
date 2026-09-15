@@ -48,9 +48,11 @@ export function Countdown({ urgency, role, className, children }: CountdownProps
   return (
     <motion.p
       role={role}
-      // A countdown that has turned critical is worth announcing once; a calm one
-      // ticking every second would talk over everything else on the page.
-      aria-live={role === 'timer' && urgency === 'critical' ? 'assertive' : 'polite'}
+      // Only a Hold's timer is ever announced, and only once it turns critical.
+      // A sale countdown is not a live region at all: there is one per flight
+      // card and `useNow` re-renders each of them every second, so announcing
+      // them would talk over everything else on the page continuously.
+      aria-live={role === 'timer' ? (urgency === 'critical' ? 'assertive' : 'polite') : undefined}
       data-urgency={urgency}
       data-pulse={pulsing ? 'on' : 'off'}
       animate={pulsing ? { opacity: [1, 0.5, 1] } : { opacity: 1 }}

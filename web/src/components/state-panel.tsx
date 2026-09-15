@@ -46,3 +46,33 @@ export function StatePanel({
     </div>
   )
 }
+
+/**
+ * The failure every page in this SPA can hit: a read that did not come back. All
+ * five of them say the same two things — which read failed, and that the gateway
+ * is the thing to check — so they say it once, here.
+ *
+ * `what` completes "Couldn't load …", which is why call sites read
+ * `what="your bookings"` rather than passing a whole sentence. A caller with a
+ * better hint than the gateway (the seat map, whose own service is the one that
+ * has to be reachable) overrides it; a caller with somewhere useful to send the
+ * reader passes that as children.
+ */
+export function GatewayErrorPanel({
+  what,
+  hint,
+  children,
+}: {
+  what: string
+  hint?: string
+  children?: React.ReactNode
+}) {
+  return (
+    <StatePanel tone="error" title={`Couldn't load ${what}.`}>
+      <p className="text-muted-foreground text-sm">
+        {hint ?? 'Check the gateway is running, then try again.'}
+      </p>
+      {children}
+    </StatePanel>
+  )
+}
