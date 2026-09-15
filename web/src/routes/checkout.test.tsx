@@ -187,6 +187,35 @@ describe('the checkout flow', () => {
     expect(screen.getByRole('button', { name: /hold 1 seat/i })).toBeInTheDocument()
   })
 
+  /**
+   * The live map's whole problem: a seat repainting silently is indistinguishable
+   * from a seat that was always taken. The one that moved says so, and — just as
+   * importantly — the ones that did not stay quiet, so the highlight means
+   * something.
+   */
+  it('highlights the seat that just changed under the buyer, and only that one', async () => {
+    renderCheckout({
+      [HOLDS_PATH]: async () =>
+        Response.json(
+          {
+            title: 'Seats no longer available',
+            detail: 'These seats are already held or booked: 1A.',
+            seats: [{ seatId: SEAT_1A, seatNumber: '1A', status: 'Held' }],
+          },
+          { status: 409 },
+        ),
+    })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Seat 1A, Available' }))
+    await userEvent.click(screen.getByRole('button', { name: /hold 1 seat/i }))
+
+    expect(await screen.findByLabelText('Seat 1A, Held')).toHaveAttribute('data-changed', 'true')
+    expect(screen.getByRole('button', { name: 'Seat 1B, Available' })).toHaveAttribute(
+      'data-changed',
+      'false',
+    )
+  })
+
   it('releases the seats and tells the buyer when the hold runs out of time', async () => {
     renderCheckout({
       [HOLDS_PATH]: async () =>

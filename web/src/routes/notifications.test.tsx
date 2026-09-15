@@ -60,6 +60,22 @@ describe('the notifications page', () => {
     expect(await screen.findByText(/No alerts yet/)).toBeInTheDocument()
   })
 
+  /**
+   * An empty inbox and an unreachable one are different answers, and only one of
+   * them means "nothing has happened yet". Telling a user who has alerts waiting
+   * that they have none is the wrong kind of wrong.
+   */
+  it('says the read failed rather than claiming there are no alerts', async () => {
+    renderNotifications({
+      [NOTIFICATION_PATHS.inbox]: () => {
+        throw new TypeError('Failed to fetch')
+      },
+    })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Couldn't load your alerts/)
+    expect(screen.queryByText(/No alerts yet/)).not.toBeInTheDocument()
+  })
+
   it('prompts a signed-out visitor to sign in rather than showing an empty inbox', async () => {
     renderNotifications({}, { signedIn: false })
 

@@ -25,12 +25,15 @@ export function AppShell() {
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur">
-        <div className="mx-auto flex h-14 w-full max-w-5xl items-center gap-6 px-4">
+        {/* Wraps onto a second line rather than overflowing or squashing: at phone
+            widths the brand and controls take the first row and the nav the
+            second, so nothing is pushed off the edge and nothing is hidden. */}
+        <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 sm:h-14 sm:flex-nowrap sm:gap-x-6 sm:py-0">
           <NavLink to="/" className="font-heading text-base font-semibold tracking-tight">
             FlashFlights
           </NavLink>
 
-          <nav className="flex items-center gap-4 text-sm">
+          <nav className="order-last flex w-full items-center gap-4 text-sm sm:order-none sm:w-auto">
             {NAV.map((item) => (
               <NavLink
                 key={item.to}
@@ -59,7 +62,7 @@ export function AppShell() {
             ))}
           </nav>
 
-          <div className="ml-auto flex items-center gap-3">
+          <div className="ml-auto flex items-center gap-1 sm:gap-3">
             <SessionMenu />
             <BackendStatusBadge />
             <ThemeToggle />
@@ -67,7 +70,7 @@ export function AppShell() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:py-8">
         <Outlet />
       </main>
     </div>

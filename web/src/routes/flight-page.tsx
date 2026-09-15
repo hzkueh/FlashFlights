@@ -1,14 +1,16 @@
 import { Link, useParams } from 'react-router'
 
+import { SaleCountdown } from '@/components/countdown'
 import { FlashSaving } from '@/components/flash-saving'
 import { SaleStateBadge } from '@/components/sale-state-badge'
 import { SeatCheckout } from '@/components/seat-checkout'
+import { StatePanel } from '@/components/state-panel'
 import { Button } from '@/components/ui/button'
+import { LoadingPanel, Skeleton } from '@/components/ui/skeleton'
 import { WatchToggle } from '@/components/watch-toggle'
 import { useAsync } from '@/hooks/use-async'
-import { useNow } from '@/hooks/use-now'
 import { type Flight, getFlight } from '@/lib/catalog'
-import { formatDeparture, formatPrice, formatRoute, saleTimeLeft } from '@/lib/format'
+import { formatDeparture, formatPrice, formatRoute } from '@/lib/format'
 
 /**
  * One flight in detail, with its live seat map. The metadata comes from Catalog
@@ -25,14 +27,19 @@ export function FlightPage() {
   const flight = useAsync((signal) => getFlight(flightId, signal), flightId)
 
   if (flight.status === 'loading') {
-    return <p className="text-muted-foreground text-sm">Loading flight…</p>
+    return <FlightDetailSkeleton />
   }
 
   if (flight.status === 'error') {
     return (
-      <p role="alert" className="text-destructive text-sm">
-        Couldn&apos;t load this flight. Check the gateway is running and try again.
-      </p>
+      <StatePanel tone="error" title="Couldn't load this flight.">
+        <p className="text-muted-foreground text-sm">
+          Check the gateway is running, then try again.
+        </p>
+        <Button asChild variant="outline">
+          <Link to="/">Back to flights</Link>
+        </Button>
+      </StatePanel>
     )
   }
 
@@ -47,17 +54,41 @@ function FlightNotFound() {
   return (
     <section className="space-y-4">
       <h1 className="font-heading text-2xl font-semibold tracking-tight">Flight not found</h1>
-      <p className="text-muted-foreground text-sm">This flight isn&apos;t in the catalog.</p>
-      <Button asChild variant="outline">
-        <Link to="/">Back to flights</Link>
-      </Button>
+      <StatePanel title="This flight isn't in the catalog.">
+        <p className="text-muted-foreground text-sm">
+          It may have been withdrawn since you last saw it.
+        </p>
+        <Button asChild variant="outline">
+          <Link to="/">Back to flights</Link>
+        </Button>
+      </StatePanel>
     </section>
   )
 }
 
-function FlightDetail({ flight }: { flight: Flight }) {
-  const now = useNow()
+/**
+ * The detail page's own shape while Catalog answers — header, price row, and the
+ * block the seat map will fill. {@link SeatCheckout} draws its own cabin-shaped
+ * placeholder once this resolves; this one only has to stop the page jumping.
+ */
+function FlightDetailSkeleton() {
+  return (
+    <LoadingPanel label="Loading flight…" className="space-y-8">
+      <div className="space-y-3">
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="h-9 w-64 max-w-full" />
+        <Skeleton className="h-4 w-48" />
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-1">
+          <Skeleton className="h-8 w-28" />
+          <Skeleton className="h-4 w-24" />
+        </div>
+      </div>
+      <Skeleton className="h-56 w-full max-w-sm" />
+    </LoadingPanel>
+  )
+}
 
+function FlightDetail({ flight }: { flight: Flight }) {
   return (
     <section className="space-y-8">
       <header className="space-y-3">
@@ -67,7 +98,7 @@ function FlightDetail({ flight }: { flight: Flight }) {
 
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
-            <h1 className="font-heading text-3xl font-semibold tracking-tight">
+            <h1 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
               {formatRoute(flight.origin, flight.destination)}
             </h1>
             <p className="text-muted-foreground text-sm">
@@ -82,9 +113,7 @@ function FlightDetail({ flight }: { flight: Flight }) {
             <p className="text-2xl font-semibold tabular-nums">{formatPrice(flight.flashPrice)}</p>
             <FlashSaving flight={flight} />
           </div>
-          <p className="text-muted-foreground text-sm tabular-nums">
-            {saleTimeLeft(flight.saleState, flight.saleStartsAt, flight.saleEndsAt, now)}
-          </p>
+          <SaleCountdown flight={flight} />
         </div>
       </header>
 
