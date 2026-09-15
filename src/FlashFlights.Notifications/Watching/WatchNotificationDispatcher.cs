@@ -17,6 +17,14 @@ public interface IWatchNotificationDispatcher
     /// Handles one <see cref="FlightSaleStarted"/> and returns how many
     /// Notifications it created. Idempotent: a redelivered announcement creates
     /// nothing and pushes nothing.
+    ///
+    /// <para>
+    /// An announcement whose window has already closed — an already-ended sale in
+    /// the seed data, or this service having been down across the whole window —
+    /// notifies no one: "now on sale" would be false by the time anyone read it.
+    /// It is still recorded, because the sale's one moment has demonstrably
+    /// passed and a Watch created afterwards could never fire.
+    /// </para>
     /// </summary>
     Task<int> OnFlightSaleStartedAsync(
         FlightSaleStarted announcement,
@@ -36,7 +44,20 @@ public sealed class WatchNotificationDispatcher(
     {
         var now = clock.GetUtcNow();
 
+        // Recorded first and unconditionally: whether or not anyone is told, this
+        // Flight's sale has opened, and that is what makes a later Watch on it
+        // refusable.
         await RecordAnnouncementAsync(announcement.FlightId, now, cancellationToken);
+
+        if (now >= announcement.SaleEndsAt)
+        {
+            logger.LogInformation(
+                "Flight {FlightNumber} ({FlightId}) opened and closed its sale window unseen; recorded without notifying anyone.",
+                announcement.FlightNumber,
+                announcement.FlightId);
+
+            return 0;
+        }
 
         var watchers = await db.Watches
             .Where(watch => watch.FlightId == announcement.FlightId)

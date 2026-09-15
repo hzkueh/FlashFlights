@@ -77,11 +77,21 @@ public sealed class WatchService(NotificationsDbContext db, TimeProvider clock) 
         }
         catch (DbUpdateException)
         {
-            // Two requests for the same Watch raced past the check above and the
-            // unique index caught the loser. Both callers asked for the same
-            // thing and both now have it, so this is success, not a failure to
-            // report — the store's guarantee is what makes the check advisory.
-            return WatchOutcome.Watched;
+            // Most likely two requests for the same Watch raced past the check
+            // above and the unique index caught the loser — both callers asked
+            // for the same thing and both now have it, so that is success, not a
+            // failure to report. Confirmed rather than assumed: a save can fail
+            // for reasons that leave no Watch behind, and reporting those as
+            // success would tell a User they will be alerted when they will not.
+            db.ChangeTracker.Clear();
+
+            var wonByTheOtherRequest = await db.Watches
+                .AnyAsync(watch => watch.UserId == userId && watch.FlightId == flightId, cancellationToken);
+
+            if (!wonByTheOtherRequest)
+            {
+                throw;
+            }
         }
 
         return WatchOutcome.Watched;

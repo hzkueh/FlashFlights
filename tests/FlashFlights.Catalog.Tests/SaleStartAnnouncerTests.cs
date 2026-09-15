@@ -64,27 +64,31 @@ public class SaleStartAnnouncerTests
 
     /// <summary>
     /// A window that opened and closed unseen — seed data for an already-ended
-    /// sale, or a service that was down across the whole window. "Now on sale" is
-    /// simply false by the time anyone would read it, so it is settled silently
-    /// rather than announced late.
+    /// sale, or a service that was down across the whole window — is still
+    /// announced. Catalog does not decide who hears about it: the announcement
+    /// carries SaleEndsAt, and Notifications is the one that turns a closed
+    /// window into "tell no one" while still recording that this sale's moment
+    /// has passed. Deciding it here would leave Notifications unable to tell an
+    /// ended sale from one that has not opened, and so willing to accept a Watch
+    /// that could never fire.
     /// </summary>
     [Fact]
-    public async Task A_window_that_already_closed_is_settled_without_announcing()
+    public async Task A_window_that_already_closed_is_still_announced()
     {
         using var testDb = CatalogTestDb.Create();
-        await testDb.SeedFlightAsync(saleStartsAt: Now.AddHours(-3), saleEndsAt: Now.AddHours(-1));
+        var saleEndsAt = Now.AddHours(-1);
+        await testDb.SeedFlightAsync(saleStartsAt: Now.AddHours(-3), saleEndsAt: saleEndsAt);
 
         var notifier = new RecordingFlightSaleNotifier();
         var result = await AnnouncerFor(testDb, notifier).AnnounceStartedSalesAsync();
 
-        Assert.Equal(0, result.Announced);
-        Assert.Equal(1, result.Suppressed);
-        Assert.Empty(notifier.Announcements);
+        Assert.Equal(1, result.Announced);
+        Assert.Equal(saleEndsAt, Assert.Single(notifier.Announcements).SaleEndsAt);
 
-        // Settled for good: it cannot be announced by a later run either.
+        // And still exactly once: the marker settles it for good.
         var second = await AnnouncerFor(testDb, notifier).AnnounceStartedSalesAsync();
-        Assert.Equal(0, second.Suppressed);
-        Assert.Empty(notifier.Announcements);
+        Assert.Equal(0, second.Announced);
+        Assert.Single(notifier.Announcements);
     }
 
     /// <summary>

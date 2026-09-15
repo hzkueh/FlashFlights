@@ -73,12 +73,9 @@ public sealed class SaleStartScheduler(
 
         var result = await announcer.AnnounceStartedSalesAsync(cancellationToken);
 
-        if (result.Announced > 0 || result.Suppressed > 0)
+        if (result.Announced > 0)
         {
-            logger.LogInformation(
-                "Sale-start scan announced {Announced} flight(s) and settled {Suppressed} already-closed window(s).",
-                result.Announced,
-                result.Suppressed);
+            logger.LogInformation("Sale-start scan announced {Announced} flight(s).", result.Announced);
         }
     }
 }

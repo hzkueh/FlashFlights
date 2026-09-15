@@ -1,7 +1,9 @@
 using System.Security.Claims;
+using FlashFlights.Contracts;
 using FlashFlights.Notifications.Watching;
 using FlashFlights.ServiceDefaults.Authentication;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace FlashFlights.Notifications.Tests;
 
@@ -70,6 +72,47 @@ public class NotificationPushTests
             new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString())]))));
     }
 
+    /// <summary>
+    /// The spec's test target end to end: given a set of Watches and a
+    /// FlightSaleStarted, the dispatcher creates the right Notifications and the
+    /// real pusher delivers each to its own User's connections — asserted here
+    /// against the fake IHubContext rather than a stand-in for it, so nothing
+    /// between the Watch and the hub is taken on trust.
+    /// </summary>
+    [Fact]
+    public async Task A_watcher_is_pushed_their_own_alert_all_the_way_to_the_hub()
+    {
+        using var testDb = NotificationsTestDb.Create();
+        var watcher = Guid.NewGuid();
+        var bystander = Guid.NewGuid();
+        var announcement = new FlightSaleStarted(
+            Guid.NewGuid(),
+            "FF412",
+            "LHR",
+            "BCN",
+            Now.AddHours(2),
+            Now);
+
+        await testDb.WatchAsync(watcher, announcement.FlightId);
+        // Watching something else entirely — they must not be addressed at all.
+        await testDb.WatchAsync(bystander, Guid.NewGuid());
+
+        var hub = new RecordingHubContext();
+        var dispatcher = new WatchNotificationDispatcher(
+            testDb.NewContext(),
+            new SignalRNotificationPusher(hub),
+            new FixedClock(Now),
+            NullLogger<WatchNotificationDispatcher>.Instance);
+
+        Assert.Equal(1, await dispatcher.OnFlightSaleStartedAsync(announcement));
+
+        Assert.Equal(watcher.ToString(), hub.AddressedUser);
+
+        var payload = Assert.IsType<NotificationView>(Assert.Single(hub.SentArgs));
+        Assert.Equal(announcement.FlightId, payload.FlightId);
+        Assert.Contains("FF412", payload.Body);
+    }
+
     private static NotificationView ANotification(Guid userId) =>
         new(Guid.NewGuid(), Guid.NewGuid(), $"FF412 LHR to BCN is now on sale (for {userId:N})", Now, null);
 
@@ -118,5 +161,10 @@ public class NotificationPushTests
                 return Task.CompletedTask;
             }
         }
+    }
+
+    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
     }
 }

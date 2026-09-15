@@ -7,12 +7,8 @@ using Microsoft.Extensions.Logging;
 namespace FlashFlights.Catalog.Sales;
 
 /// <summary>What one pass over the catalog did, for the scheduler's log.</summary>
-/// <param name="Announced">Flights whose open window was announced on this run.</param>
-/// <param name="Suppressed">
-/// Flights whose window had already closed by the time the crossing was seen, so
-/// they were settled without an announcement.
-/// </param>
-public sealed record AnnounceSaleStartsResult(int Announced, int Suppressed);
+/// <param name="Announced">Flights whose crossing was announced on this run.</param>
+public sealed record AnnounceSaleStartsResult(int Announced);
 
 /// <summary>
 /// Detects Flights crossing their SaleStartsAt and announces each exactly once
@@ -30,10 +26,14 @@ public sealed record AnnounceSaleStartsResult(int Announced, int Suppressed);
 /// </para>
 ///
 /// <para>
-/// A window that had already closed when the crossing was first seen — an
-/// already-ended sale in the seed data, or a service that was down across the
-/// whole window — is marked as handled but never announced. "Now on sale" would
-/// simply be false by the time anyone read it.
+/// Every crossing is announced, including one whose window had already closed by
+/// the time it was seen — an already-ended sale in the seed data, or a service
+/// that was down across the whole window. Catalog does not decide who hears
+/// about it: the announcement carries <c>SaleEndsAt</c>, and Notifications is
+/// the one that knows a closed window means "tell no one" while still recording
+/// that this sale's moment has passed. Judging it here instead would leave
+/// Notifications unable to tell an ended sale from one that has not opened, and
+/// so willing to accept a Watch that could never fire.
 /// </para>
 /// </summary>
 public sealed class SaleStartAnnouncer(
@@ -49,9 +49,10 @@ public sealed class SaleStartAnnouncer(
         // Unsettled crossings only. The window comparison is deliberately not in
         // the query: SQLite has no native DateTimeOffset, EF stores it as text,
         // and the provider refuses to translate a comparison on it — the same
-        // caveat Flight.FlashPrice carries. Narrowing on the marker in SQL keeps
-        // what comes back to the handful of Flights that have never been settled,
-        // and the catalog is a handful of flash sales to begin with.
+        // caveat Flight.FlashPrice carries. So the marker narrows in SQL and the
+        // clock is applied in memory. Unindexed and a full scan of the unsettled
+        // rows, which is fine only because the catalog is a handful of flash
+        // sales; a real one would want an index on the marker.
         var unsettled = await db.Flights
             .Where(flight => flight.SaleStartHandledAt == null)
             .ToListAsync(cancellationToken);
@@ -62,23 +63,9 @@ public sealed class SaleStartAnnouncer(
             .ToList();
 
         var announced = 0;
-        var suppressed = 0;
 
         foreach (var flight in crossed)
         {
-            if (now >= flight.SaleEndsAt)
-            {
-                flight.SaleStartHandledAt = now;
-                suppressed++;
-
-                logger.LogInformation(
-                    "Flight {FlightNumber} ({FlightId}) opened and closed its sale window unseen; settling it without an announcement.",
-                    flight.FlightNumber,
-                    flight.Id);
-
-                continue;
-            }
-
             try
             {
                 await notifier.SaleStartedAsync(
@@ -113,6 +100,6 @@ public sealed class SaleStartAnnouncer(
         // announced, and a Flight left unmarked is simply picked up next time.
         await db.SaveChangesAsync(cancellationToken);
 
-        return new AnnounceSaleStartsResult(announced, suppressed);
+        return new AnnounceSaleStartsResult(announced);
     }
 }

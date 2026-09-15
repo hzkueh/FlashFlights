@@ -7,7 +7,8 @@ namespace FlashFlights.Catalog.Sales;
 /// SaleStartsAt. This interval is the lag a watcher feels: the spec promises the
 /// alert "the moment the sale opens", and a crossing is only seen on the next
 /// tick, so it bounds how late "the moment" can be. Kept short because the scan
-/// is cheap — one indexed read that matches nothing on almost every tick.
+/// is cheap — a read of the handful of Flights whose crossing has not been
+/// settled, which is none of them on almost every tick.
 /// </summary>
 public sealed class SaleStartSchedulerOptions
 {

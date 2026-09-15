@@ -70,7 +70,11 @@ the real-world boarding document rather than this purchase record_
 
 **Watch**:
 A User's subscription to be notified when a specific Flight's sale goes
-live.
+live. Created only while that moment is still ahead: a Watch fires once,
+when the window opens, so a Flight whose sale has already opened cannot
+be watched — there is nothing left to wait for. Notifications knows a
+sale has opened from the announcement it consumed, never by asking
+Catalog.
 _Avoid: Alert, Subscription, Follow_
 
 **Notification**:

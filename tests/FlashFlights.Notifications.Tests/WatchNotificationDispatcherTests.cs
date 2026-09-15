@@ -163,6 +163,34 @@ public class WatchNotificationDispatcherTests
         Assert.Equal(WatchOutcome.SaleAlreadyStarted, result);
     }
 
+    /// <summary>
+    /// Catalog announces every crossing, including a window that had already
+    /// closed when it was first seen. "Now on sale" would be false by the time
+    /// anyone read it, so nobody is told — but the sale's one moment has
+    /// demonstrably passed, so it is recorded and a Watch created afterwards is
+    /// refused rather than accepted into a silence.
+    /// </summary>
+    [Fact]
+    public async Task An_announcement_for_a_closed_window_tells_no_one_but_still_settles_the_sale()
+    {
+        using var testDb = NotificationsTestDb.Create();
+        var userId = Guid.NewGuid();
+        await testDb.WatchAsync(userId, SaleStarted.FlightId);
+
+        var closed = SaleStarted with { SaleEndsAt = Now.AddHours(-1) };
+
+        var pusher = new RecordingNotificationPusher();
+        var created = await DispatcherFor(testDb, pusher).OnFlightSaleStartedAsync(closed);
+
+        Assert.Equal(0, created);
+        Assert.Empty(await testDb.InboxAsync(userId));
+        Assert.Empty(pusher.Pushes);
+
+        Assert.Equal(
+            WatchOutcome.SaleAlreadyStarted,
+            await WatchServiceFor(testDb).WatchAsync(Guid.NewGuid(), closed.FlightId));
+    }
+
     /// <summary>A push that fails must not cost the User the inbox row behind it.</summary>
     [Fact]
     public async Task A_failed_push_still_leaves_the_notification_in_the_inbox()
