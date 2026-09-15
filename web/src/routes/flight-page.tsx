@@ -10,8 +10,10 @@ import { LoadingPanel } from '@/components/loading-panel'
 import { Skeleton } from '@/components/ui/skeleton'
 import { WatchToggle } from '@/components/watch-toggle'
 import { useAsync } from '@/hooks/use-async'
+import { useNow } from '@/hooks/use-now'
 import { type Flight, getFlight } from '@/lib/catalog'
 import { formatDeparture, formatPrice, formatRoute } from '@/lib/format'
+import { saleStateAt } from '@/lib/sale-window'
 
 /**
  * One flight in detail, with its live seat map. The metadata comes from Catalog
@@ -84,6 +86,13 @@ function FlightDetailSkeleton() {
 }
 
 function FlightDetail({ flight }: { flight: Flight }) {
+  // One clock for the whole page, and one sale state derived from it. The badge,
+  // the countdown, the Watch toggle and the checkout are all given this same
+  // value rather than reading `flight.saleState` for themselves: the checkout
+  // closes on the window closing, so anything that disagreed with it by even a
+  // render would be offering a hold the page had already said was over.
+  const saleState = saleStateAt(flight, useNow())
+
   return (
     <section className="space-y-8">
       <header className="space-y-3">
@@ -100,7 +109,7 @@ function FlightDetail({ flight }: { flight: Flight }) {
               {flight.flightNumber} · {formatDeparture(flight.departureAt)}
             </p>
           </div>
-          <SaleStateBadge state={flight.saleState} />
+          <SaleStateBadge state={saleState} />
         </div>
 
         <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
@@ -108,13 +117,13 @@ function FlightDetail({ flight }: { flight: Flight }) {
             <p className="text-2xl font-semibold tabular-nums">{formatPrice(flight.flashPrice)}</p>
             <FlashSaving flight={flight} />
           </div>
-          <SaleCountdown flight={flight} />
+          <SaleCountdown flight={flight} state={saleState} />
         </div>
       </header>
 
-      <WatchToggle flight={flight} />
+      <WatchToggle flight={flight} state={saleState} />
 
-      <SeatCheckout flight={flight} />
+      <SeatCheckout flight={flight} saleState={saleState} />
     </section>
   )
 }

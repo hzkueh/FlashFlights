@@ -138,16 +138,34 @@ describe('watching an upcoming sale', () => {
   })
 })
 
+/**
+ * The window moves, not just the label: the page derives the sale state from
+ * `saleStartsAt`/`saleEndsAt` rather than trusting `saleState`, so a fixture that
+ * called itself Live over a window still in the future would read as Upcoming and
+ * offer the watch after all.
+ */
 describe('a sale that is not upcoming', () => {
+  const HOUR = 60 * 60 * 1000
+
   it('offers no watch on a live sale — there is nothing left to wait for', async () => {
-    renderFlight({}, { flight: aFlight({ saleState: 'Live' }) })
+    const live = aFlight({
+      saleState: 'Live',
+      saleStartsAt: new Date(Date.now() - HOUR).toISOString(),
+      saleEndsAt: new Date(Date.now() + HOUR).toISOString(),
+    })
+    renderFlight({}, { flight: live })
 
     await screen.findByRole('heading', { name: 'LHR → BCN' })
     expect(screen.queryByRole('button', { name: /Notify me/ })).not.toBeInTheDocument()
   })
 
   it('offers no watch on an ended sale either', async () => {
-    renderFlight({}, { flight: aFlight({ saleState: 'Ended' }) })
+    const ended = aFlight({
+      saleState: 'Ended',
+      saleStartsAt: new Date(Date.now() - 2 * HOUR).toISOString(),
+      saleEndsAt: new Date(Date.now() - HOUR).toISOString(),
+    })
+    renderFlight({}, { flight: ended })
 
     await screen.findByRole('heading', { name: 'LHR → BCN' })
     expect(screen.queryByRole('button', { name: /Notify me/ })).not.toBeInTheDocument()

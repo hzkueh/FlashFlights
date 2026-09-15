@@ -2,7 +2,7 @@ import { motion } from 'motion/react'
 
 import { useNow } from '@/hooks/use-now'
 import { useReducedMotion } from '@/hooks/use-reduced-motion'
-import type { Flight } from '@/lib/catalog'
+import type { Flight, SaleState } from '@/lib/catalog'
 import { saleTimeLeft } from '@/lib/format'
 import { type Urgency, saleUrgency } from '@/lib/urgency'
 import { cn } from '@/lib/utils'
@@ -66,21 +66,32 @@ export function Countdown({ urgency, role, className, children }: CountdownProps
   )
 }
 
+interface SaleCountdownProps {
+  flight: Flight
+  /**
+   * Which sale state to count against, for a caller that keeps the state current
+   * itself (`saleStateAt`). Defaults to the server's `flight.saleState`, so a
+   * page that has not taken that on shows exactly what it always did — the
+   * countdown must never disagree with the badge beside it, and the two are only
+   * guaranteed to agree when one page decides the state for both.
+   */
+  state?: SaleState
+  className?: string
+}
+
 /**
  * A flight's sale window, counting down: to its opening while upcoming, to its
  * close while live, and stating plainly that it is over once ended. Owns its own
  * clock, so a page renders one of these per flight rather than threading `now`
  * down to every card.
  */
-export function SaleCountdown({ flight, className }: { flight: Flight; className?: string }) {
+export function SaleCountdown({ flight, state, className }: SaleCountdownProps) {
   const now = useNow()
+  const saleState = state ?? flight.saleState
 
   return (
-    <Countdown
-      urgency={saleUrgency(flight.saleState, flight.saleEndsAt, now)}
-      className={className}
-    >
-      {saleTimeLeft(flight.saleState, flight.saleStartsAt, flight.saleEndsAt, now)}
+    <Countdown urgency={saleUrgency(saleState, flight.saleEndsAt, now)} className={className}>
+      {saleTimeLeft(saleState, flight.saleStartsAt, flight.saleEndsAt, now)}
     </Countdown>
   )
 }

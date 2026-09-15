@@ -8,9 +8,11 @@ import { GatewayErrorPanel, StatePanel } from '@/components/state-panel'
 import { LoadingPanel } from '@/components/loading-panel'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAsync } from '@/hooks/use-async'
+import { useNow } from '@/hooks/use-now'
 import { useReducedMotion } from '@/hooks/use-reduced-motion'
 import { type Flight, listFlights } from '@/lib/catalog'
 import { formatDeparture, formatPrice, formatRoute } from '@/lib/format'
+import { saleStateAt } from '@/lib/sale-window'
 
 /**
  * The catalog list: every flight running a flash sale, live ones first. Reads
@@ -58,6 +60,13 @@ export function FlightsPage() {
 
 function FlightCard({ flight, index }: { flight: Flight; index: number }) {
   const reducedMotion = useReducedMotion()
+  // The card keeps the sale state current instead of showing the one Catalog
+  // computed when it answered. Nothing re-fetches this list, so a sale that
+  // opens while it is on screen would otherwise sit on "Upcoming" behind a
+  // countdown reading 0m 0s. The badge and the countdown are both given this
+  // one value, so they cannot disagree about which way it is counting.
+  const now = useNow()
+  const saleState = saleStateAt(flight, now)
 
   return (
     <motion.div
@@ -82,7 +91,7 @@ function FlightCard({ flight, index }: { flight: Flight; index: number }) {
               {flight.flightNumber} · {formatDeparture(flight.departureAt)}
             </p>
           </div>
-          <SaleStateBadge state={flight.saleState} />
+          <SaleStateBadge state={saleState} />
         </div>
 
         <div className="mt-4 flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
@@ -93,7 +102,7 @@ function FlightCard({ flight, index }: { flight: Flight; index: number }) {
             </div>
             <p className="text-muted-foreground text-xs">{remainingSeatsLabel(flight)}</p>
           </div>
-          <SaleCountdown flight={flight} />
+          <SaleCountdown flight={flight} state={saleState} />
         </div>
       </Link>
     </motion.div>
