@@ -187,6 +187,65 @@ describe('the checkout flow', () => {
     expect(screen.getByRole('button', { name: /hold 1 seat/i })).toBeInTheDocument()
   })
 
+  /**
+   * The live map's whole problem: a seat repainting silently is indistinguishable
+   * from a seat that was always taken. The one that moved says so, and — just as
+   * importantly — the ones that did not stay quiet, so the highlight means
+   * something.
+   */
+  it('highlights the seat that just changed under the buyer, and only that one', async () => {
+    renderCheckout({
+      [HOLDS_PATH]: async () =>
+        Response.json(
+          {
+            title: 'Seats no longer available',
+            detail: 'These seats are already held or booked: 1A.',
+            seats: [{ seatId: SEAT_1A, seatNumber: '1A', status: 'Held' }],
+          },
+          { status: 409 },
+        ),
+    })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Seat 1A, Available' }))
+    await userEvent.click(screen.getByRole('button', { name: /hold 1 seat/i }))
+
+    expect(await screen.findByLabelText('Seat 1A, Held')).toHaveAttribute('data-changed', 'true')
+    expect(screen.getByRole('button', { name: 'Seat 1B, Available' })).toHaveAttribute(
+      'data-changed',
+      'false',
+    )
+  })
+
+  /**
+   * The Available-to-Held move is the one the beat exists for, and it is also the
+   * one that changes the seat from a button into inert text. If the animated
+   * element is rebuilt across that swap, Framer treats it as a mount — which
+   * `initial: false` suppresses — and the seat changes with no beat at all. So
+   * the cell that animates has to survive the change, whatever renders inside it.
+   */
+  it('animates the same element across a seat becoming held, rather than rebuilding it', async () => {
+    renderCheckout({
+      [HOLDS_PATH]: async () =>
+        Response.json(
+          {
+            title: 'Seats no longer available',
+            detail: 'These seats are already held or booked: 1A.',
+            seats: [{ seatId: SEAT_1A, seatNumber: '1A', status: 'Held' }],
+          },
+          { status: 409 },
+        ),
+    })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Seat 1A, Available' }))
+    const before = document.querySelector('[data-seat-cell="1A"]')
+
+    await userEvent.click(screen.getByRole('button', { name: /hold 1 seat/i }))
+    await screen.findByLabelText('Seat 1A, Held')
+
+    expect(before).not.toBeNull()
+    expect(document.querySelector('[data-seat-cell="1A"]')).toBe(before)
+  })
+
   it('releases the seats and tells the buyer when the hold runs out of time', async () => {
     renderCheckout({
       [HOLDS_PATH]: async () =>

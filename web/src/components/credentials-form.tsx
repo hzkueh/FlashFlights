@@ -62,7 +62,13 @@ export function CredentialsForm({
 
       <form className="space-y-4" onSubmit={handleSubmit} noValidate>
         {problem.general.length > 0 && (
-          <div role="alert" className="rounded-lg border border-destructive/50 px-3 py-2 text-sm text-destructive">
+          <div
+            role="alert"
+            // The same treatment `StatePanel` gives a failure, at the smaller
+            // scale a form field wants — so a rejected sign-in reads as the same
+            // kind of event as a failed load elsewhere in the app.
+            className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+          >
             {problem.general.map((message) => (
               <p key={message}>{message}</p>
             ))}

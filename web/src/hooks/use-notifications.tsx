@@ -13,7 +13,16 @@ import {
   subscribeToNotifications,
 } from '@/lib/notifications-live'
 
+/**
+ * How the inbox read has gone. `error` means the read failed — not that there
+ * are no alerts — which is why the two are separate states rather than an empty
+ * list standing in for both.
+ */
+export type InboxStatus = 'loading' | 'ready' | 'error'
+
 interface NotificationsContextValue {
+  /** Whether the inbox has been read yet, and whether the read worked. */
+  status: InboxStatus
   /** This user's alerts, newest first. Empty while signed out. */
   notifications: Notification[]
   /** How many are unread — what the shell's badge shows. */
@@ -47,6 +56,7 @@ export function NotificationsProvider({ children, createConnection }: Notificati
   const token = session?.token ?? null
 
   const [inbox, setInbox] = useState<Inbox>(EMPTY_INBOX)
+  const [status, setStatus] = useState<InboxStatus>(token === null ? 'ready' : 'loading')
 
   // Clear the inbox the moment the session changes, during render rather than in
   // an effect, so signing out — or signing in as someone else — never paints a
@@ -57,6 +67,9 @@ export function NotificationsProvider({ children, createConnection }: Notificati
   if (loadedFor !== token) {
     setLoadedFor(token)
     setInbox(EMPTY_INBOX)
+    // A signed-out visitor is not waiting on anything — there is no inbox to
+    // read — so only a new session puts this back into loading.
+    setStatus(token === null ? 'ready' : 'loading')
   }
 
   useEffect(() => {
@@ -75,10 +88,16 @@ export function NotificationsProvider({ children, createConnection }: Notificati
 
         if (!controller.signal.aborted) {
           setInbox(loaded)
+          setStatus('ready')
         }
       } catch {
         // An unreachable gateway leaves the last-known inbox rather than
-        // emptying it — being offline is not the same as having no alerts.
+        // emptying it — being offline is not the same as having no alerts. The
+        // status still says the read failed, so a page with nothing to show can
+        // say so rather than claim the inbox is empty.
+        if (!controller.signal.aborted) {
+          setStatus('error')
+        }
       }
     }
 
@@ -153,11 +172,12 @@ export function NotificationsProvider({ children, createConnection }: Notificati
 
   const value = useMemo<NotificationsContextValue>(
     () => ({
+      status,
       notifications: inbox.notifications,
       unreadCount: inbox.unreadCount,
       markRead,
     }),
-    [inbox, markRead],
+    [status, inbox, markRead],
   )
 
   return <NotificationsContext value={value}>{children}</NotificationsContext>

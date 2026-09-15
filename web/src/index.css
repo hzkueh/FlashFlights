@@ -21,6 +21,11 @@
     --color-chart-3: var(--chart-3);
     --color-chart-2: var(--chart-2);
     --color-chart-1: var(--chart-1);
+    --color-seat-held: var(--seat-held);
+    --color-seat-held-foreground: var(--seat-held-foreground);
+    --color-seat-confirmed: var(--seat-confirmed);
+    --color-seat-confirmed-foreground: var(--seat-confirmed-foreground);
+    --color-urgent: var(--urgent);
     --color-ring: var(--ring);
     --color-input: var(--input);
     --color-border: var(--border);
@@ -49,24 +54,35 @@
 }
 
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
+    --background: oklch(0.99 0.003 250);
+    --foreground: oklch(0.17 0.02 255);
     --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
+    --card-foreground: oklch(0.17 0.02 255);
     --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.17 0.02 255);
+    --primary: oklch(0.53 0.17 252);
+    --primary-foreground: oklch(0.99 0.005 250);
+    --secondary: oklch(0.968 0.008 250);
+    --secondary-foreground: oklch(0.3 0.04 252);
+    --muted: oklch(0.968 0.006 250);
+    --muted-foreground: oklch(0.53 0.02 252);
+    --accent: oklch(0.955 0.02 250);
+    --accent-foreground: oklch(0.34 0.07 252);
     --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
+    --border: oklch(0.91 0.008 250);
+    --input: oklch(0.91 0.008 250);
+    --ring: oklch(0.53 0.17 252);
+
+    /* Seat statuses and countdown urgency: named for what they mean, so the
+       seat map and the countdowns pick a token rather than a colour, and a
+       theme change is edited here rather than across components. Every pair
+       below clears WCAG AA (4.5:1) against the surface it sits on — a Confirmed
+       seat is meant to read as gone, not as unreadable. */
+    --seat-held: oklch(0.88 0.1 82);           /* 7.07:1 with its foreground */
+    --seat-held-foreground: oklch(0.38 0.08 68);
+    --seat-confirmed: oklch(0.93 0.006 250);   /* 5.55:1 with its foreground */
+    --seat-confirmed-foreground: oklch(0.47 0.015 250);
+    --urgent: oklch(0.53 0.15 55);             /* 5.39:1 on the background */
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
@@ -84,24 +100,30 @@
 }
 
 .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
+    --background: oklch(0.165 0.012 255);
+    --foreground: oklch(0.97 0.006 250);
+    --card: oklch(0.215 0.015 255);
+    --card-foreground: oklch(0.97 0.006 250);
+    --popover: oklch(0.215 0.015 255);
+    --popover-foreground: oklch(0.97 0.006 250);
+    --primary: oklch(0.7 0.15 252);
+    --primary-foreground: oklch(0.18 0.04 252);
+    --secondary: oklch(0.28 0.02 252);
+    --secondary-foreground: oklch(0.96 0.01 250);
+    --muted: oklch(0.27 0.015 252);
+    --muted-foreground: oklch(0.72 0.02 250);
+    --accent: oklch(0.31 0.035 252);
+    --accent-foreground: oklch(0.96 0.01 250);
     --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
+    --border: oklch(1 0 0 / 12%);
+    --input: oklch(1 0 0 / 16%);
+    --ring: oklch(0.7 0.15 252);
+
+    --seat-held: oklch(0.52 0.1 74);           /* 5.00:1 with its foreground */
+    --seat-held-foreground: oklch(0.96 0.04 92);
+    --seat-confirmed: oklch(0.3 0.012 252);    /* 5.50:1 with its foreground */
+    --seat-confirmed-foreground: oklch(0.72 0.015 250);
+    --urgent: oklch(0.8 0.13 78);              /* 10.17:1 on the background */
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
@@ -126,5 +148,21 @@
     }
   html {
     @apply font-sans;
+    }
+
+  /*
+   * The floor under every animation in the app. Framer Motion is told
+   * separately (`useReducedMotion`), because it animates inline styles this
+   * cannot reach; this catches the CSS side — transitions, the countdown's
+   * pulse, anything a component adds later — so honouring the preference is
+   * never something a new component has to remember.
+   */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+      }
     }
 }

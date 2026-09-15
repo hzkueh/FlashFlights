@@ -1,11 +1,16 @@
+import { motion } from 'motion/react'
 import { Link } from 'react-router'
 
+import { SaleCountdown } from '@/components/countdown'
 import { FlashSaving } from '@/components/flash-saving'
 import { SaleStateBadge } from '@/components/sale-state-badge'
+import { GatewayErrorPanel, StatePanel } from '@/components/state-panel'
+import { LoadingPanel } from '@/components/loading-panel'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useAsync } from '@/hooks/use-async'
-import { useNow } from '@/hooks/use-now'
+import { useReducedMotion } from '@/hooks/use-reduced-motion'
 import { type Flight, listFlights } from '@/lib/catalog'
-import { formatDeparture, formatPrice, formatRoute, saleTimeLeft } from '@/lib/format'
+import { formatDeparture, formatPrice, formatRoute } from '@/lib/format'
 
 /**
  * The catalog list: every flight running a flash sale, live ones first. Reads
@@ -25,24 +30,24 @@ export function FlightsPage() {
         </p>
       </header>
 
-      {flights.status === 'loading' && (
-        <p className="text-muted-foreground text-sm">Loading flights…</p>
-      )}
+      {flights.status === 'loading' && <FlightListSkeleton />}
 
       {flights.status === 'error' && (
-        <p role="alert" className="text-destructive text-sm">
-          Couldn&apos;t load the flights. Check the gateway is running and try again.
-        </p>
+        <GatewayErrorPanel what="the flights" />
       )}
 
       {flights.status === 'ready' &&
         (flights.data.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No flash sales are scheduled right now.</p>
+          <StatePanel title="No flash sales are scheduled right now.">
+            <p className="text-muted-foreground text-sm">
+              Check back soon — sales open and close on their own schedule.
+            </p>
+          </StatePanel>
         ) : (
           <ul className="grid gap-4 sm:grid-cols-2">
-            {flights.data.map((flight) => (
+            {flights.data.map((flight, index) => (
               <li key={flight.id}>
-                <FlightCard flight={flight} />
+                <FlightCard flight={flight} index={index} />
               </li>
             ))}
           </ul>
@@ -51,39 +56,77 @@ export function FlightsPage() {
   )
 }
 
-function FlightCard({ flight }: { flight: Flight }) {
-  const now = useNow()
+function FlightCard({ flight, index }: { flight: Flight; index: number }) {
+  const reducedMotion = useReducedMotion()
 
   return (
-    <Link
-      to={`/flights/${flight.id}`}
-      className="block rounded-lg border bg-card p-5 transition-colors hover:border-foreground/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+    <motion.div
+      // The list settles in rather than appearing all at once, each card a beat
+      // behind the one before it. Capped, so a long catalog does not make the last
+      // card wait — and skipped entirely for a reader who asked for less motion.
+      initial={reducedMotion ? false : { opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, delay: Math.min(index, 5) * 0.04, ease: 'easeOut' }}
+      className="h-full"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="font-heading text-lg font-semibold tracking-tight">
-            {formatRoute(flight.origin, flight.destination)}
-          </p>
-          <p className="text-muted-foreground text-xs">
-            {flight.flightNumber} · {formatDeparture(flight.departureAt)}
-          </p>
-        </div>
-        <SaleStateBadge state={flight.saleState} />
-      </div>
-
-      <div className="mt-4 flex items-end justify-between gap-3">
-        <div>
-          <div className="flex items-baseline gap-2">
-            <p className="text-2xl font-semibold tabular-nums">{formatPrice(flight.flashPrice)}</p>
-            <FlashSaving flight={flight} />
+      <Link
+        to={`/flights/${flight.id}`}
+        className="block h-full rounded-lg border bg-card p-5 transition-colors hover:border-primary/50 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-heading text-lg font-semibold tracking-tight">
+              {formatRoute(flight.origin, flight.destination)}
+            </p>
+            <p className="text-muted-foreground text-xs">
+              {flight.flightNumber} · {formatDeparture(flight.departureAt)}
+            </p>
           </div>
-          <p className="text-muted-foreground text-xs">{remainingSeatsLabel(flight)}</p>
+          <SaleStateBadge state={flight.saleState} />
         </div>
-        <p className="text-muted-foreground text-sm tabular-nums">
-          {saleTimeLeft(flight.saleState, flight.saleStartsAt, flight.saleEndsAt, now)}
-        </p>
-      </div>
-    </Link>
+
+        <div className="mt-4 flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
+          <div>
+            <div className="flex items-baseline gap-2">
+              <p className="text-2xl font-semibold tabular-nums">{formatPrice(flight.flashPrice)}</p>
+              <FlashSaving flight={flight} />
+            </div>
+            <p className="text-muted-foreground text-xs">{remainingSeatsLabel(flight)}</p>
+          </div>
+          <SaleCountdown flight={flight} />
+        </div>
+      </Link>
+    </motion.div>
+  )
+}
+
+/**
+ * The shape of the list while Catalog is answering. Four cards, because the
+ * catalog is small by design (spec) and a screenful of placeholder for a
+ * two-flight catalog would be a lie about what is coming.
+ */
+function FlightListSkeleton() {
+  return (
+    <LoadingPanel label="Loading flights…" className="grid gap-4 sm:grid-cols-2">
+      {[0, 1, 2, 3].map((card) => (
+        <div key={card} className="space-y-4 rounded-lg border bg-card p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-2">
+              <Skeleton className="h-5 w-40" />
+              <Skeleton className="h-3 w-28" />
+            </div>
+            <Skeleton className="h-5 w-20 rounded-full" />
+          </div>
+          <div className="flex items-end justify-between gap-3">
+            <div className="space-y-2">
+              <Skeleton className="h-7 w-24" />
+              <Skeleton className="h-3 w-32" />
+            </div>
+            <Skeleton className="h-4 w-20" />
+          </div>
+        </div>
+      ))}
+    </LoadingPanel>
   )
 }
 

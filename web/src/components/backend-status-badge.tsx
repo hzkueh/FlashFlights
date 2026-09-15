@@ -49,7 +49,10 @@ export function BackendStatusBadge() {
   return (
     <Badge role="status" aria-live="polite" variant={variant} title={tooltip(health)}>
       <span aria-hidden className={`size-1.5 rounded-full ${dot}`} />
-      {label}
+      {/* On a phone the dot and its colour carry the whole message, and the
+          header has no room for the word. The label stays in the accessible
+          name either way, so nothing is lost to a screen reader. */}
+      <span className="sr-only sm:not-sr-only">{label}</span>
     </Badge>
   )
 }

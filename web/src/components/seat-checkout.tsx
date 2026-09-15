@@ -1,10 +1,17 @@
+import { motion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 
+import { Countdown } from '@/components/countdown'
+import { GatewayErrorPanel, StatePanel } from '@/components/state-panel'
 import { Button } from '@/components/ui/button'
+import { LoadingPanel } from '@/components/loading-panel'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useAsync } from '@/hooks/use-async'
 import { useLiveSeatMap } from '@/hooks/use-live-seat-map'
 import { useNow } from '@/hooks/use-now'
+import { useRecentlyChanged } from '@/hooks/use-recently-changed'
+import { useReducedMotion } from '@/hooks/use-reduced-motion'
 import { useSession } from '@/hooks/use-session'
 import { type Booking, type ConfirmHoldOutcome, confirmHold } from '@/lib/bookings'
 import type { Flight } from '@/lib/catalog'
@@ -16,6 +23,8 @@ import {
   createHold,
 } from '@/lib/holds'
 import { type Seat, type SeatStatus, getSeatMap } from '@/lib/seat-map'
+import { holdUrgency } from '@/lib/urgency'
+import { cn } from '@/lib/utils'
 
 /**
  * The seat map turned interactive: a signed-in buyer selects Available Seats,
@@ -30,22 +39,22 @@ export function SeatCheckout({ flight }: { flight: Flight }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <h2 className="font-heading text-lg font-semibold tracking-tight">Seat map</h2>
         <SeatLegend />
       </div>
 
-      {map.status === 'loading' && <p className="text-muted-foreground text-sm">Loading seats…</p>}
+      {map.status === 'loading' && <SeatMapSkeleton />}
 
       {map.status === 'error' && (
-        <p role="alert" className="text-destructive text-sm">
-          Couldn&apos;t load the seat map. It updates live once Ordering is reachable.
-        </p>
+        <GatewayErrorPanel what="the seat map" hint="It updates live once Ordering is reachable." />
       )}
 
       {map.status === 'ready' &&
         (map.data.seats.length === 0 ? (
-          <p className="text-muted-foreground text-sm">This flight has no seats yet.</p>
+          <StatePanel>
+            <p className="text-sm">This flight has no seats yet.</p>
+          </StatePanel>
         ) : (
           <LiveCheckout flight={flight} initialSeats={map.data.seats} />
         ))}
@@ -344,10 +353,10 @@ function HeldPanel({
           Holding <span className="font-medium">{seatList}</span> ·{' '}
           <span className="tabular-nums">{total}</span>
         </p>
-        <p role="timer" aria-live="polite" className="text-sm tabular-nums">
-          <span className="text-muted-foreground">Time left: </span>
-          <span className="font-medium">{humanizeDuration(Math.max(0, remaining))}</span>
-        </p>
+        <Countdown role="timer" urgency={holdUrgency(remaining)}>
+          <span className="text-muted-foreground font-normal">Time left: </span>
+          {humanizeDuration(Math.max(0, remaining))}
+        </Countdown>
       </div>
 
       <Button onClick={onConfirm} disabled={confirming}>
@@ -403,36 +412,46 @@ function NoticeLine({ notice }: { notice: Notice }) {
     const taken = notice.seats.map((seat) => seat.seatNumber).join(', ')
 
     return (
-      <p role="alert" className="text-destructive text-sm">
-        {taken} {notice.seats.length === 1 ? 'was' : 'were'} taken before your hold went through. Pick
-        different seats and try again.
-      </p>
+      <StatePanel
+        tone="error"
+        title={`${taken} ${notice.seats.length === 1 ? 'was' : 'were'} taken before your hold went through.`}
+      >
+        <p className="text-muted-foreground text-sm">Pick different seats and try again.</p>
+      </StatePanel>
     )
   }
 
   if (notice.kind === 'expired') {
     return (
-      <p role="status" className="text-muted-foreground text-sm">
-        Your hold ran out of time and the seats were released. Select seats to try again.
-      </p>
+      // Announced: this happened to the buyer while they were looking elsewhere,
+      // rather than being an answer to something they just did.
+      <StatePanel role="status" title="Your hold ran out of time and the seats were released.">
+        <p className="text-muted-foreground text-sm">Select seats to try again.</p>
+      </StatePanel>
     )
   }
 
-  return (
-    <p role="alert" className="text-destructive text-sm">
-      {notice.message}
-    </p>
-  )
+  return <StatePanel tone="error" title={notice.message} />
 }
 
+/**
+ * Each SeatStatus in the theme's own words. The Held and Confirmed tokens are
+ * defined for both themes in `index.css`, so a status reads the same way in each
+ * — an amber seat someone is holding, a dimmed and struck-through one that is
+ * gone — rather than collapsing into shades of grey in one of them.
+ */
 const STATUS_CELL: Record<SeatStatus, string> = {
   Available: 'border-border bg-background text-foreground',
-  Held: 'border-transparent bg-secondary text-secondary-foreground',
-  Confirmed: 'border-transparent bg-muted text-muted-foreground line-through',
+  Held: 'border-transparent bg-seat-held text-seat-held-foreground',
+  Confirmed:
+    'border-transparent bg-seat-confirmed text-seat-confirmed-foreground line-through',
 }
 
 const SELECTED_CELL = 'border-primary bg-primary text-primary-foreground ring-2 ring-primary'
 const HELD_BY_YOU_CELL = 'border-primary bg-primary/15 text-foreground ring-1 ring-primary'
+
+/** The ring a seat wears for the moment after its status moves under the viewer. */
+const JUST_CHANGED_CELL = 'ring-2 ring-primary/60 ring-offset-1 ring-offset-card'
 
 function SeatGrid({
   seats,
@@ -450,28 +469,64 @@ function SeatGrid({
   const rows = groupByRow(seats)
 
   return (
-    <div className="w-fit space-y-2 rounded-lg border bg-card p-4">
-      {rows.map(([rowNumber, rowSeats]) => (
-        <div key={rowNumber} className="flex items-center gap-2">
-          <span className="text-muted-foreground w-6 text-right text-xs tabular-nums">{rowNumber}</span>
-          {rowSeats.map((seat) => (
-            <SeatCell
-              key={seat.seatId}
-              seat={seat}
-              selected={selected.has(seat.seatId)}
-              heldByYou={heldByYou?.has(seat.seatId) ?? false}
-              interactive={interactive}
-              onToggle={onToggle}
-            />
-          ))}
-        </div>
-      ))}
+    // The cabin keeps its real proportions at every width: a wide-bodied map
+    // scrolls sideways inside the card rather than squashing its seats into
+    // unreadable slivers or reflowing rows into a shape no aircraft has.
+    <div className="max-w-full overflow-x-auto rounded-lg border bg-card p-4">
+      <div className="w-fit space-y-2">
+        {rows.map(([rowNumber, rowSeats]) => (
+          <div key={rowNumber} className="flex items-center gap-1.5 sm:gap-2">
+            <span className="text-muted-foreground w-6 shrink-0 text-right text-xs tabular-nums">
+              {rowNumber}
+            </span>
+            {rowSeats.map((seat) => (
+              <SeatCell
+                key={seat.seatId}
+                seat={seat}
+                selected={selected.has(seat.seatId)}
+                heldByYou={heldByYou?.has(seat.seatId) ?? false}
+                interactive={interactive}
+                onToggle={onToggle}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
 
+/**
+ * The cabin's shape while Ordering is still answering, so the page does not jump
+ * when the real map lands. Four rows of six is a stand-in, not a promise — the
+ * flight's real dimensions are not known until the seats arrive.
+ */
+function SeatMapSkeleton() {
+  return (
+    <LoadingPanel
+      label="Loading seats…"
+      className="max-w-full overflow-x-auto rounded-lg border bg-card p-4"
+    >
+      <div className="w-fit space-y-2">
+        {[0, 1, 2, 3].map((row) => (
+          <div key={row} className="flex items-center gap-1.5 sm:gap-2">
+            <Skeleton className="h-3 w-6 shrink-0" />
+            {[0, 1, 2, 3, 4, 5].map((column) => (
+              <Skeleton key={column} className="size-8 shrink-0 sm:size-9" />
+            ))}
+          </div>
+        ))}
+      </div>
+    </LoadingPanel>
+  )
+}
+
 const CELL_BASE =
-  'inline-flex h-9 w-9 items-center justify-center rounded-md border text-xs font-medium tabular-nums'
+  'inline-flex size-8 shrink-0 items-center justify-center rounded-md border text-xs font-medium tabular-nums transition-[background-color,border-color,color,box-shadow] duration-300 sm:size-9'
+
+/** The attention beat a seat plays when its status moves. */
+const FLASH = { scale: [1, 1.16, 1] }
+const AT_REST = { scale: 1 }
 
 function SeatCell({
   seat,
@@ -486,49 +541,80 @@ function SeatCell({
   interactive: boolean
   onToggle: (seatId: string) => void
 }) {
-  // A Seat this buyer is holding gets its own look even though the server reports
-  // it Held like any other — the map cannot say who holds it, but the checkout can.
-  if (heldByYou) {
-    return (
-      <span
-        data-status={seat.status}
-        aria-label={`Seat ${seat.seatNumber}, held by you`}
-        title={`${seat.seatNumber} — held by you`}
-        className={`${CELL_BASE} ${HELD_BY_YOU_CELL}`}
-      >
-        {seat.column}
-      </span>
-    )
-  }
+  // What a live map cannot say on its own: which of these hundred seats just
+  // moved. Without it a seat someone else took across the cabin is a silent
+  // repaint, and the guarantee this app exists to demonstrate goes unseen.
+  const justChanged = useRecentlyChanged(seat.status)
+  const reducedMotion = useReducedMotion()
+  const flashing = justChanged && !reducedMotion
 
   // Only Available Seats are selectable, and only while choosing; every other
   // Seat is inert text, exactly as the browse-only map rendered it.
-  if (interactive && seat.status === 'Available') {
-    return (
-      <button
-        type="button"
-        aria-pressed={selected}
-        aria-label={`Seat ${seat.seatNumber}, Available`}
-        title={`${seat.seatNumber} — ${selected ? 'selected' : 'available'}`}
-        onClick={() => onToggle(seat.seatId)}
-        className={`${CELL_BASE} cursor-pointer transition-colors ${
-          selected ? SELECTED_CELL : `${STATUS_CELL.Available} hover:border-primary`
-        }`}
-      >
-        {seat.column}
-      </button>
-    )
-  }
+  const selectable = interactive && !heldByYou && seat.status === 'Available'
 
-  return (
+  // The ring stays even when the scale beat is suppressed: a reader who asked for
+  // less motion still needs to see which seat changed, and colour and a ring say
+  // it without moving anything.
+  const className = cn(
+    CELL_BASE,
+    heldByYou
+      ? HELD_BY_YOU_CELL
+      : selectable && selected
+        ? SELECTED_CELL
+        : selectable
+          ? `${STATUS_CELL.Available} cursor-pointer hover:border-primary`
+          : STATUS_CELL[seat.status],
+    justChanged && JUST_CHANGED_CELL,
+  )
+
+  // A Seat this buyer is holding gets its own look even though the server reports
+  // it Held like any other — the map cannot say who holds it, but the checkout can.
+  const inner = selectable ? (
+    <button
+      type="button"
+      aria-pressed={selected}
+      aria-label={`Seat ${seat.seatNumber}, Available`}
+      title={`${seat.seatNumber} — ${selected ? 'selected' : 'available'}`}
+      onClick={() => onToggle(seat.seatId)}
+      data-status={seat.status}
+      data-changed={justChanged ? 'true' : 'false'}
+      className={className}
+    >
+      {seat.column}
+    </button>
+  ) : (
     <span
       data-status={seat.status}
-      aria-label={`Seat ${seat.seatNumber}, ${seat.status}`}
-      title={`${seat.seatNumber} — ${seat.status}`}
-      className={`${CELL_BASE} ${STATUS_CELL[seat.status]}`}
+      data-changed={justChanged ? 'true' : 'false'}
+      aria-label={
+        heldByYou ? `Seat ${seat.seatNumber}, held by you` : `Seat ${seat.seatNumber}, ${seat.status}`
+      }
+      title={heldByYou ? `${seat.seatNumber} — held by you` : `${seat.seatNumber} — ${seat.status}`}
+      className={className}
     >
       {seat.column}
     </span>
+  )
+
+  return (
+    // The animated element is this wrapper, not the seat itself, and that is the
+    // whole point of it: becoming Held turns a selectable button into inert text,
+    // and React rebuilds the DOM node when the element type changes. Framer reads
+    // a rebuilt node as a mount, which `initial: false` suppresses — so animating
+    // the seat directly would skip the beat for Available-to-Held, precisely the
+    // change worth showing. The wrapper outlives the swap.
+    <motion.span
+      data-seat-cell={seat.seatNumber}
+      className="inline-flex shrink-0"
+      // No mount animation — on load every seat is new, and a cabin that animates
+      // itself into existence buries the one change that matters later.
+      initial={false}
+      animate={flashing ? FLASH : AT_REST}
+      transition={{ duration: flashing ? 0.45 : 0.2, ease: 'easeOut' }}
+      whileTap={selectable && !reducedMotion ? { scale: 0.92 } : undefined}
+    >
+      {inner}
+    </motion.span>
   )
 }
 
