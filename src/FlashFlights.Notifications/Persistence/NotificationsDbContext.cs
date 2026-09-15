@@ -13,6 +13,8 @@ public sealed class NotificationsDbContext(DbContextOptions<NotificationsDbConte
 
     public DbSet<Notification> Notifications => Set<Notification>();
 
+    public DbSet<SaleAnnouncement> SaleAnnouncements => Set<SaleAnnouncement>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Watch>(watch =>
@@ -38,6 +40,14 @@ public sealed class NotificationsDbContext(DbContextOptions<NotificationsDbConte
             // FlightSaleStarted cannot duplicate anyone's inbox. Widen this if
             // a second Notification trigger is ever added.
             notification.HasIndex(n => new { n.UserId, n.FlightId }).IsUnique();
+        });
+
+        modelBuilder.Entity<SaleAnnouncement>(announcement =>
+        {
+            // Keyed by the Flight: one announcement per Flight, and a
+            // redelivered one finds the row already there.
+            announcement.HasKey(a => a.FlightId);
+            announcement.Property(a => a.FlightId).ValueGeneratedNever();
         });
     }
 }

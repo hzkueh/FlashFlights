@@ -24,6 +24,37 @@ public class NotificationsSchemaTests : IDisposable
 
         Assert.Empty(await db.Watches.ToListAsync());
         Assert.Empty(await db.Notifications.ToListAsync());
+        Assert.Empty(await db.SaleAnnouncements.ToListAsync());
+    }
+
+    /// <summary>
+    /// One announcement per Flight: a redelivered FlightSaleStarted finds the row
+    /// already there rather than adding a second.
+    /// </summary>
+    [Fact]
+    public async Task A_flights_sale_is_announced_to_this_service_only_once()
+    {
+        var flightId = Guid.NewGuid();
+
+        await using var services = BuildServices();
+        await MigrateAsync(services);
+
+        await using (var scope = services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<NotificationsDbContext>();
+            db.SaleAnnouncements.Add(AnAnnouncement(flightId));
+            await db.SaveChangesAsync();
+        }
+
+        // A second scope, because a redelivery is a second delivery: the store
+        // has to refuse it, not merely the change tracker that already holds it.
+        await using (var scope = services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<NotificationsDbContext>();
+            db.SaleAnnouncements.Add(AnAnnouncement(flightId));
+
+            await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        }
     }
 
     /// <summary>
@@ -89,6 +120,12 @@ public class NotificationsSchemaTests : IDisposable
         UserId = userId,
         FlightId = flightId,
         CreatedAt = DateTimeOffset.UtcNow,
+    };
+
+    private static SaleAnnouncement AnAnnouncement(Guid flightId) => new()
+    {
+        FlightId = flightId,
+        AnnouncedAt = DateTimeOffset.UtcNow,
     };
 
     private static Notification ASaleStartedNotification(Guid userId, Guid flightId) => new()
