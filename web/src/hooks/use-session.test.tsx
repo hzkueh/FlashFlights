@@ -64,7 +64,13 @@ describe('staying signed in', () => {
     renderProbe(routed({ [AUTH_PATHS.me]: async () => new Response('', { status: 401 }) }))
 
     await waitFor(() => expect(screen.getByTestId('who')).toHaveTextContent('signed out'))
-    expect(storedSession()).toBeNull()
+    // Waited for in its own right rather than read once the DOM has changed.
+    // Storage is cleared by an effect, and React flushes effects *after* the
+    // commit that put "signed out" on screen — at the moment this text appears,
+    // the key is still there every time. Asserting it straight after the wait
+    // above was betting on `act`'s flush landing first, which it usually did and
+    // about one run in six under load did not.
+    await waitFor(() => expect(storedSession()).toBeNull())
   })
 
   /**
