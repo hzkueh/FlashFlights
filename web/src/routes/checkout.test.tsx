@@ -93,14 +93,17 @@ async function holdBothSeats() {
   await screen.findByLabelText('Seat 1A, held by you')
 }
 
-function renderCheckout(routes: Record<string, Route>, { signedIn = true } = {}) {
+function renderCheckout(
+  routes: Record<string, Route>,
+  { signedIn = true, flight = aFlight() } = {},
+) {
   if (signedIn) {
     storeSession()
   }
 
   return renderApp(
     signedInGateway({
-      [CATALOG_PATHS.flight(FLIGHT_ID)]: async () => Response.json(aFlight()),
+      [CATALOG_PATHS.flight(FLIGHT_ID)]: async () => Response.json(flight),
       [SEAT_MAP_PATH]: async () => Response.json(twoAvailableSeats()),
       ...routes,
     }),
@@ -335,5 +338,52 @@ describe('the checkout flow', () => {
     // The hold is intact: still counting down, and the pay button is offered again.
     expect(screen.getByText(/time left/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /confirm and pay/i })).toBeEnabled()
+  })
+})
+
+/**
+ * A Hold is a claim on a flash price, so it can only be made while the window
+ * offering that price is open. The seat map stays fully readable either side of
+ * it — a closed sale is browsable, just not buyable.
+ */
+describe('a sale outside its window', () => {
+  const HOUR = 60 * 60 * 1000
+
+  const ended = aFlight({
+    saleState: 'Ended',
+    saleStartsAt: new Date(Date.now() - 4 * HOUR).toISOString(),
+    saleEndsAt: new Date(Date.now() - HOUR).toISOString(),
+  })
+
+  const upcoming = aFlight({
+    saleState: 'Upcoming',
+    saleStartsAt: new Date(Date.now() + HOUR).toISOString(),
+    saleEndsAt: new Date(Date.now() + 4 * HOUR).toISOString(),
+  })
+
+  it('shows an ended sale’s seats as read-only, with nothing to press', async () => {
+    renderCheckout({}, { flight: ended })
+
+    expect(await screen.findByText(/this flash sale has ended/i)).toBeInTheDocument()
+    // Available seats render as inert text once the window shuts, exactly as the
+    // signed-out browse map renders them — no button, so nothing to click.
+    expect(screen.queryByRole('button', { name: /Seat 1A/ })).not.toBeInTheDocument()
+    expect(screen.getByText('A')).toBeInTheDocument()
+  })
+
+  it('offers no hold on an ended sale, however the seats are reached', async () => {
+    renderCheckout({}, { flight: ended })
+
+    await screen.findByText(/this flash sale has ended/i)
+    expect(screen.queryByRole('button', { name: /hold/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/select one or more available seats/i)).not.toBeInTheDocument()
+  })
+
+  it('says an upcoming sale is not open yet rather than that it is over', async () => {
+    renderCheckout({}, { flight: upcoming })
+
+    expect(await screen.findByText(/hasn.t opened yet/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Seat 1A/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /hold/i })).not.toBeInTheDocument()
   })
 })

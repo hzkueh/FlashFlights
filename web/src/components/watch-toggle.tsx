@@ -3,7 +3,7 @@ import { Link } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { useSession } from '@/hooks/use-session'
-import type { Flight } from '@/lib/catalog'
+import type { Flight, SaleState } from '@/lib/catalog'
 import { listWatchedFlightIds, unwatchFlight, watchFlight } from '@/lib/notifications'
 
 /**
@@ -19,7 +19,7 @@ import { listWatchedFlightIds, unwatchFlight, watchFlight } from '@/lib/notifica
  * addressed to someone, and knowing the option exists is the reason to sign
  * in.</p>
  */
-export function WatchToggle({ flight }: { flight: Flight }) {
+export function WatchToggle({ flight, state }: { flight: Flight; state?: SaleState }) {
   const { session } = useSession()
   const token = session?.token ?? null
 
@@ -63,7 +63,7 @@ export function WatchToggle({ flight }: { flight: Flight }) {
     return () => controller.abort()
   }, [token, flight.id])
 
-  if (flight.saleState !== 'Upcoming') {
+  if ((state ?? flight.saleState) !== 'Upcoming') {
     return null
   }
 

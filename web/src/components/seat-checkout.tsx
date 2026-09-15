@@ -14,7 +14,7 @@ import { useRecentlyChanged } from '@/hooks/use-recently-changed'
 import { useReducedMotion } from '@/hooks/use-reduced-motion'
 import { useSession } from '@/hooks/use-session'
 import { type Booking, type ConfirmHoldOutcome, confirmHold } from '@/lib/bookings'
-import type { Flight } from '@/lib/catalog'
+import type { Flight, SaleState } from '@/lib/catalog'
 import { formatDateTime, formatPrice, formatRoute, humanizeDuration } from '@/lib/format'
 import {
   type ConflictingSeat,
@@ -34,7 +34,7 @@ import { cn } from '@/lib/utils'
  * repaints here without a refetch; this buyer's own Hold is reflected from the
  * granted Hold itself — its Seats render as "held by you".
  */
-export function SeatCheckout({ flight }: { flight: Flight }) {
+export function SeatCheckout({ flight, saleState }: { flight: Flight; saleState: SaleState }) {
   const map = useAsync((signal) => getSeatMap(flight.id, signal), flight.id)
 
   return (
@@ -56,7 +56,7 @@ export function SeatCheckout({ flight }: { flight: Flight }) {
             <p className="text-sm">This flight has no seats yet.</p>
           </StatePanel>
         ) : (
-          <LiveCheckout flight={flight} initialSeats={map.data.seats} />
+          <LiveCheckout flight={flight} saleState={saleState} initialSeats={map.data.seats} />
         ))}
     </div>
   )
@@ -70,10 +70,18 @@ export function SeatCheckout({ flight }: { flight: Flight }) {
  * connection falls back to the seeded map, and Ordering's locked grant stays the
  * sole authority (ADR-0001).
  */
-function LiveCheckout({ flight, initialSeats }: { flight: Flight; initialSeats: Seat[] }) {
+function LiveCheckout({
+  flight,
+  saleState,
+  initialSeats,
+}: {
+  flight: Flight
+  saleState: SaleState
+  initialSeats: Seat[]
+}) {
   const seats = useLiveSeatMap(flight.id, initialSeats)
 
-  return <Checkout flight={flight} seats={seats} />
+  return <Checkout flight={flight} saleState={saleState} seats={seats} />
 }
 
 /**
@@ -90,13 +98,24 @@ type Phase =
   | { name: 'confirming'; hold: Hold }
   | { name: 'booked'; booking: Booking }
 
+/** Nothing selected — hoisted so a closed sale does not build a new Set each render. */
+const NO_SEATS: ReadonlySet<string> = new Set()
+
 /** A message layered over selection: a lost race, a plain failure, or a lapsed Hold. */
 type Notice =
   | { kind: 'conflict'; seats: ConflictingSeat[] }
   | { kind: 'expired' }
   | { kind: 'error'; message: string }
 
-function Checkout({ flight, seats }: { flight: Flight; seats: Seat[] }) {
+function Checkout({
+  flight,
+  saleState,
+  seats,
+}: {
+  flight: Flight
+  saleState: SaleState
+  seats: Seat[]
+}) {
   const { session } = useSession()
   const [phase, setPhase] = useState<Phase>({ name: 'selecting' })
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
@@ -107,7 +126,23 @@ function Checkout({ flight, seats }: { flight: Flight; seats: Seat[] }) {
   // that will report the same change.
   const [taken, setTaken] = useState<ReadonlyMap<string, SeatStatus>>(new Map())
 
+  // Seats can only be held while the window is open — a Hold is a claim on a
+  // flash price, and outside the window there is no flash price to claim. An
+  // Upcoming sale is refused for the same reason as an Ended one: the window is
+  // the offer, and it is not open. Everything else on the page still reads, so a
+  // closed sale is browsable in full — CONTEXT.md's seat map is a view of the
+  // ledger, not a shop front.
+  //
+  // This is the page declining to offer what the domain does not allow, NOT
+  // where the rule is kept: Ordering grants Holds from the Seat ledger alone and
+  // has never been told a Flight has a sale window, so a POST to /holds outside
+  // one is still granted. Closing that needs Ordering to learn the window the
+  // way Notifications learns it (ADR-0002), which is a decision, not a guard.
+  const saleOpen = saleState === 'Live'
   const shownSeats = taken.size === 0 ? seats : applyStatuses(seats, taken)
+  // A selection made a moment before the window closed stops counting with it,
+  // rather than staying lit under a bar that will no longer act on it.
+  const shownSelected = saleOpen ? selected : NO_SEATS
   // The Seats this buyer holds (or has just booked) light up as "held by you" —
   // the map cannot say who holds a Seat, but the checkout knows its own.
   const yourSeatIds = ownSeatIds(phase)
@@ -221,9 +256,9 @@ function Checkout({ flight, seats }: { flight: Flight; seats: Seat[] }) {
     <div className="space-y-4">
       <SeatGrid
         seats={shownSeats}
-        selected={selected}
+        selected={shownSelected}
         heldByYou={yourSeatIds}
-        interactive={phase.name === 'selecting'}
+        interactive={phase.name === 'selecting' && saleOpen}
         onToggle={toggle}
       />
 
@@ -238,7 +273,7 @@ function Checkout({ flight, seats }: { flight: Flight; seats: Seat[] }) {
           onConfirm={confirm}
           onExpired={onExpired}
         />
-      ) : (
+      ) : saleOpen ? (
         <SelectionBar
           count={selected.size}
           pricePerSeat={flight.flashPrice}
@@ -246,6 +281,8 @@ function Checkout({ flight, seats }: { flight: Flight; seats: Seat[] }) {
           holding={phase.name === 'holding'}
           onHold={hold}
         />
+      ) : (
+        <ClosedSaleLine state={saleState} />
       )}
     </div>
   )
@@ -262,6 +299,22 @@ function ownSeatIds(phase: Phase): ReadonlySet<string> | null {
   }
 
   return null
+}
+
+/**
+ * What stands in for the action row when the window is shut. It says which way
+ * the sale is shut, because the two are not the same answer to "can I buy this":
+ * an upcoming sale is worth waiting for (and the Watch toggle above offers
+ * exactly that), an ended one is not.
+ */
+function ClosedSaleLine({ state }: { state: SaleState }) {
+  return (
+    <p className="text-muted-foreground text-sm">
+      {state === 'Upcoming'
+        ? 'This flash sale hasn’t opened yet. Seats can be held once it does.'
+        : 'This flash sale has ended. The seat map is read-only.'}
+    </p>
+  )
 }
 
 /** The action row under the map while the buyer is choosing Seats. */
