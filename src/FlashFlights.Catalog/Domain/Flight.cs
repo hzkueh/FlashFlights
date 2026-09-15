@@ -45,5 +45,19 @@ public sealed class Flight
 
     public DateTimeOffset SaleEndsAt { get; set; }
 
+    /// <summary>
+    /// When the sale-start scheduler settled this Flight's crossing of
+    /// <see cref="SaleStartsAt"/>, or null while the crossing is still ahead or
+    /// unhandled. Set once and never cleared: it is what makes
+    /// <c>FlightSaleStarted</c> fire exactly once per Flight however often the
+    /// scheduler runs (ticket 09).
+    ///
+    /// "Settled", not "announced": a window that had already closed by the time
+    /// the crossing was seen is marked here without an announcement, since "now
+    /// on sale" would be false by the time anyone read it. See
+    /// <see cref="Sales.SaleStartAnnouncer"/>.
+    /// </summary>
+    public DateTimeOffset? SaleStartHandledAt { get; set; }
+
     public FlightSeatCounts? SeatCounts { get; set; }
 }
