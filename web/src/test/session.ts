@@ -1,5 +1,7 @@
 import { AUTH_PATHS } from '@/lib/auth'
 import { BACKEND_READINESS_PATH } from '@/lib/gateway'
+import { NOTIFICATION_PATHS } from '@/lib/notifications'
+import type { Inbox, Notification } from '@/lib/notifications'
 import { SESSION_STORAGE_KEY, type Session } from '@/lib/session'
 import { type Route, reachable, routed } from '@/test/backend'
 
@@ -41,8 +43,33 @@ export function signedInGateway(overrides: Record<string, Route> = {}): typeof f
     [BACKEND_READINESS_PATH]: (request) => reachable(request.url),
     [AUTH_PATHS.me]: async () =>
       Response.json({ userId: session.userId, email: session.email }),
+    // Every signed-in render reads the inbox for the shell's unread badge, so
+    // an empty one is part of the baseline rather than something each suite
+    // that is not about notifications has to remember to stub.
+    [NOTIFICATION_PATHS.inbox]: async () => Response.json(anInbox()),
+    [NOTIFICATION_PATHS.watches]: async () => Response.json({ flightIds: [] }),
     ...overrides,
   })
+}
+
+/** An inbox in the shape `InboxView` serialises; empty unless a suite says otherwise. */
+export function anInbox(notifications: Notification[] = []): Inbox {
+  return {
+    notifications,
+    unreadCount: notifications.filter((notification) => notification.readAt === null).length,
+  }
+}
+
+/** One alert, in the shape the server sends it. */
+export function aNotification(overrides: Partial<Notification> = {}): Notification {
+  return {
+    id: '0199f0e2-0000-7000-8000-00000000000a',
+    flightId: '0199f0e2-0000-7000-8000-0000000000f1',
+    body: 'FF412 LHR to BCN is now on sale',
+    createdAt: '2026-09-15T12:00:00Z',
+    readAt: null,
+    ...overrides,
+  }
 }
 
 /** A validation problem in the shape `TypedResults.ValidationProblem` writes. */

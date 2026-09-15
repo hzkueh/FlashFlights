@@ -3,6 +3,7 @@ import { NavLink, Outlet } from 'react-router'
 import { BackendStatusBadge } from '@/components/backend-status-badge'
 import { SessionMenu } from '@/components/session-menu'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { useNotifications } from '@/hooks/use-notifications'
 import { cn } from '@/lib/utils'
 
 /** The screens from the spec, in the order a buyer meets them. */
@@ -19,6 +20,8 @@ const NAV = [
  * thin — later tickets add screens under it, not chrome around it.
  */
 export function AppShell() {
+  const { unreadCount } = useNotifications()
+
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur">
@@ -41,6 +44,17 @@ export function AppShell() {
                 }
               >
                 {item.label}
+                {item.to === '/notifications' && unreadCount > 0 && (
+                  <span
+                    // The count, not a dot: "3 unread" is worth knowing before
+                    // opening the page, and it is the same number the page shows
+                    // because both read it from the same place.
+                    aria-label={`${unreadCount} unread ${unreadCount === 1 ? 'notification' : 'notifications'}`}
+                    className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[0.65rem] font-medium text-primary-foreground tabular-nums"
+                  >
+                    {unreadCount}
+                  </span>
+                )}
               </NavLink>
             ))}
           </nav>
