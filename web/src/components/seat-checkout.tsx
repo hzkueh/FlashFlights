@@ -134,10 +134,11 @@ function Checkout({
   // ledger, not a shop front.
   //
   // This is the page declining to offer what the domain does not allow, NOT
-  // where the rule is kept: Ordering grants Holds from the Seat ledger alone and
-  // has never been told a Flight has a sale window, so a POST to /holds outside
-  // one is still granted. Closing that needs Ordering to learn the window the
-  // way Notifications learns it (ADR-0002), which is a decision, not a guard.
+  // where the rule is kept: Ordering refuses a Hold outside the window from the
+  // sale announcement it consumed (ADR-0003), and its answer is what decides.
+  // The gate here is only so a buyer is not shown a button that cannot work —
+  // and the two can still disagree for an instant, which is why `saleNotOpen`
+  // below is a case the flow handles rather than an impossibility.
   const saleOpen = saleState === 'Live'
   const shownSeats = taken.size === 0 ? seats : applyStatuses(seats, taken)
   // A selection made a moment before the window closed stops counting with it,
@@ -196,6 +197,16 @@ function Checkout({
         setSelected((current) => without(current, outcome.seats))
         setTaken((current) => withStatuses(current, outcome.seats))
         setNotice({ kind: 'conflict', seats: outcome.seats })
+        setPhase({ name: 'selecting' })
+        return
+      case 'saleNotOpen':
+        // Ordering's word on the window beats this page's, which recomputed the
+        // state from the flight it was served: either the sale closed under an
+        // open page, or Ordering has not yet heard it open. Either way there is
+        // no flash price to claim, so the whole selection goes — unlike a lost
+        // race, no other Seat would have fared better.
+        setSelected(new Set())
+        setNotice({ kind: 'error', message: outcome.message })
         setPhase({ name: 'selecting' })
         return
       default:

@@ -40,6 +40,26 @@ Gotchas this script encodes (both bit me once):
      and removes the -wal, so the cp-out is complete. (If you must copy while it
      runs, also copy catalog.db-wal + catalog.db-shm, or force a checkpoint.)
 
+  4. Ordering refuses a Hold on a Flight it has heard no sale announcement for
+     (ADR-0003), and it learns of one only from Catalog's FlightSaleStarted. A
+     freshly seeded flight therefore is NOT holdable the instant the rows land:
+     SaleStartHandledAt is left NULL above on purpose, so Catalog announces the
+     crossing on its next scan and Ordering records the window. That is one
+     SaleStartScheduler tick (10s by default) after catalog is back up — so
+     give it ~15s before the first hold, and don't TRUNCATE "SaleAnnouncements"
+     when clearing the Ordering tables (the TRUNCATE below deliberately omits
+     it). A hold answered 409 `reason: saleNotOpen` on the Live flight means the
+     announcement has not landed yet; wait a tick and retry.
+
+     The sharp edge is a flight Catalog announced BEFORE Ordering learned to
+     consume: SaleStartHandledAt is already set, so the crossing never repeats
+     and that flight is unholdable for good. Every flight seeded before this
+     shipped is in that state. Fix by replaying the announcement — in the copied
+     catalog.db, `UPDATE Flights SET SaleStartHandledAt = NULL;` before copying
+     it back — which is safe because the announcement was always at-least-once
+     and both consumers are idempotent (ADR-0002, ADR-0003). Reseeding from
+     scratch does the same thing and is usually simpler.
+
 USAGE (from repo root, stack already up & healthy):
   SP=path/to/this/dir   # a writable working dir
   # Stop catalog BEFORE copying out so WAL is checkpointed into catalog.db (gotcha 3).

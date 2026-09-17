@@ -64,6 +64,28 @@ describe('createHold', () => {
     expect(outcome).toEqual({ status: 'conflict', seats })
   })
 
+  it('reports a sale that is not open, distinct from a lost race for seats', async () => {
+    stubFetch(async () =>
+      Response.json(
+        {
+          title: 'Flash sale ended',
+          detail: "This flight's flash sale has closed, so its seats are no longer on offer at the flash price.",
+          reason: 'saleNotOpen',
+        },
+        { status: 409 },
+      ),
+    )
+
+    const outcome = await createHold(request, TOKEN)
+
+    // Not `conflict`: no other seat would have fared better, so offering "pick
+    // different seats" would send the buyer back to a map where none can be held.
+    expect(outcome).toEqual({
+      status: 'saleNotOpen',
+      message: "This flight's flash sale has closed, so its seats are no longer on offer at the flash price.",
+    })
+  })
+
   it('reports a malformed request as invalid, distinct from a lost race', async () => {
     stubFetch(async () =>
       Response.json(

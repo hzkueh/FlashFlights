@@ -23,6 +23,13 @@ public sealed class OrderingDbContext(DbContextOptions<OrderingDbContext> option
 
     public DbSet<Booking> Bookings => Set<Booking>();
 
+    /// <summary>
+    /// Not part of the ledger: what Ordering has been told about Flights' sale
+    /// windows, so it can refuse a Hold on a flash price that is not on offer
+    /// without asking Catalog (ADR-0003).
+    /// </summary>
+    public DbSet<SaleAnnouncement> SaleAnnouncements => Set<SaleAnnouncement>();
+
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         EnsureLedgerIsAppendOnly(ChangeTracker);
@@ -126,6 +133,17 @@ public sealed class OrderingDbContext(DbContextOptions<OrderingDbContext> option
                 .WithOne(h => h.Booking!)
                 .HasForeignKey<Booking>(b => b.HoldId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<SaleAnnouncement>(announcement =>
+        {
+            // Keyed by the Flight, which is what makes recording an at-least-once
+            // announcement idempotent: a redelivery collides with the row it
+            // already wrote instead of adding a second window for the same Flight.
+            // It is a cross-service reference to a Catalog Flight, never an FK —
+            // this store owns no Flights, and nothing here joins to one.
+            announcement.HasKey(a => a.FlightId);
+            announcement.Property(a => a.FlightId).ValueGeneratedNever();
         });
     }
 }

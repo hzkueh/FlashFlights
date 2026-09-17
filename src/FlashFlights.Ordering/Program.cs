@@ -1,6 +1,7 @@
 using FlashFlights.Ordering.Bookings;
 using FlashFlights.Ordering.Holds;
 using FlashFlights.Ordering.Persistence;
+using FlashFlights.Ordering.Sales;
 using FlashFlights.Ordering.SeatMaps;
 using FlashFlights.ServiceDefaults;
 using FlashFlights.ServiceDefaults.DataStores;
@@ -17,7 +18,18 @@ builder.AddFlashFlightsDataStore<OrderingDbContext>(
     options => options.UseNpgsql(builder.Configuration.RequireConnectionString("OrderingDb")));
 
 builder.Services.AddSingleton<IPingLog, InMemoryPingLog>();
-builder.AddFlashFlightsServiceDefaults("ordering", bus => bus.AddConsumer<PingSentConsumer>());
+
+// Ordering consumes Catalog's sale-start announcement the same way Notifications
+// does, so it can refuse a Hold on a flash price that is not on offer without
+// asking Catalog on the booking path (ADR-0003). The queue-name prefix in the
+// service defaults is what lets both services have their own copy.
+builder.AddFlashFlightsServiceDefaults(
+    "ordering",
+    bus =>
+    {
+        bus.AddConsumer<PingSentConsumer>();
+        bus.AddConsumer<FlightSaleStartedConsumer>();
+    });
 
 // The read side and the sweep must read one clock, or a Hold could be expired to
 // a reader and live to a confirm — so the clock is a registered dependency both
@@ -42,6 +54,10 @@ builder.Services.AddSingleton<IValidateOptions<HoldSweepOptions>, ValidateHoldSw
 // Catalog's browse counts can follow (ADR-0001). Behind the notifier seam, so
 // the Hold logic itself stays unaware of MassTransit.
 builder.Services.AddScoped<ISeatMovementNotifier, MassTransitSeatMovementNotifier>();
+
+// Writes down each Flight's sale window as its announcement arrives; HoldService
+// is the only thing that reads what it wrote.
+builder.Services.AddScoped<ISaleWindowRecorder, SaleWindowRecorder>();
 
 builder.Services.AddScoped<IHoldService, HoldService>();
 

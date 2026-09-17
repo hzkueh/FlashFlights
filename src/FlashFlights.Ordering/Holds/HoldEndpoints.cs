@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using FlashFlights.Ordering.Domain;
 using FlashFlights.ServiceDefaults.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -20,6 +21,13 @@ public static class HoldEndpoints
 
     /// <summary>Where a confirmed Hold's Booking is reported to live — the Created location a confirm returns.</summary>
     public const string BookingsBasePath = "/bookings";
+
+    /// <summary>
+    /// The <c>reason</c> a refused-by-the-window Hold carries, so the SPA branches
+    /// on a token rather than on prose. It sits alongside confirm's
+    /// <c>expired</c> and <c>alreadyConfirmed</c> in the same extension.
+    /// </summary>
+    public const string SaleNotOpenReason = "saleNotOpen";
 
     public static IEndpointRouteBuilder MapFlashFlightsHolds(this IEndpointRouteBuilder endpoints)
     {
@@ -71,6 +79,8 @@ public static class HoldEndpoints
                 TypedResults.ValidationProblem(malformed.Errors),
             CreateHoldResult.Conflict conflict =>
                 Conflict(conflict),
+            CreateHoldResult.SaleNotOpen refused =>
+                SaleNotOpen(refused.State),
             _ => throw new InvalidOperationException($"Unhandled hold result: {result.GetType().Name}."),
         };
     }
@@ -88,6 +98,36 @@ public static class HoldEndpoints
                 + $"{string.Join(", ", conflict.Seats.Select(seat => seat.SeatNumber))}.",
             statusCode: StatusCodes.Status409Conflict,
             extensions: new Dictionary<string, object?> { ["seats"] = conflict.Seats });
+
+    /// <summary>
+    /// 409 rather than 400: the request was well formed, and it is the Flight's
+    /// state that refuses it — a sale still to come is even worth posting again
+    /// once it opens. It carries no <c>seats</c>, because no other Seat would have
+    /// fared better. One <c>reason</c> covers both refusals, because a client has
+    /// the same thing to do with either — stop offering the Hold — while the prose
+    /// still tells the buyer which it is, since "this sale has ended" and "this
+    /// sale has not started yet" are not the same news.
+    /// </summary>
+    private static IResult SaleNotOpen(SaleWindowState state)
+    {
+        var (title, detail) = state == SaleWindowState.Ended
+            ? ("Flash sale ended",
+                "This flight's flash sale has closed, so its seats are no longer on offer at the flash price.")
+            // Hedged on purpose. Ordering knows only that no open window has been
+            // announced to it — never SaleStartsAt — so it cannot tell a sale
+            // still to come from one whose announcement is a moment behind. "Has
+            // not started yet" would assert the first and be wrong for the second,
+            // to a buyer looking at a page that says Live.
+            : ("Flash sale not open yet",
+                "This flight's seats are not on offer at a flash price yet. "
+                + "If its sale has only just opened, try again in a moment.");
+
+        return TypedResults.Problem(
+            title: title,
+            detail: detail,
+            statusCode: StatusCodes.Status409Conflict,
+            extensions: new Dictionary<string, object?> { ["reason"] = SaleNotOpenReason });
+    }
 
     private static async Task<IResult> ConfirmHoldAsync(
         Guid holdId,
