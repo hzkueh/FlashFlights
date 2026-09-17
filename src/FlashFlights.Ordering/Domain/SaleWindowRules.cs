@@ -37,10 +37,12 @@ public enum SaleWindowState
 /// Seat's takeability is one function, and so is the Flight's.
 ///
 /// <para>
-/// The boundaries are Catalog's: <c>FlightCatalogService.StateOf</c> and the
-/// SPA's <c>saleStateAt</c> both treat the window as inclusive at the start and
-/// exclusive at the end, so at the instant a sale closes the page reads Ended and
-/// a Hold is refused. A change to one of the three belongs in the others.
+/// The end boundary is Catalog's: <c>FlightCatalogService.StateOf</c> and the
+/// SPA's <c>saleStateAt</c> both treat the close as exclusive, so at the instant
+/// a sale closes the page reads Ended and a Hold is refused. A change to one of
+/// the three belongs in the others. Their <em>inclusive start</em> has no
+/// counterpart here: this service never learns <c>SaleStartsAt</c> and carries
+/// the opening only as whether an announcement has arrived (ADR-0003).
 /// </para>
 /// </summary>
 public static class SaleWindowRules

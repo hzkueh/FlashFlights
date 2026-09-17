@@ -57,12 +57,21 @@ exists, only whether it has heard this Flight's sale open.
   the same staleness ADR-0002 accepted in the permissive direction, and it is the
   right way round for a write that takes a buyer's money.
 
-- **The window is checked against the same `now` that stamps the Hold**, inside
+- **The window is judged against the same `now` that stamps the Hold**, inside
   the transaction that grants it, next to the expiry boundary every other path
-  shares (`SeatStatusRules.HasExpired`). Checking earlier with an earlier clock
+  shares (`SeatStatusRules.HasExpired`). Judging earlier with an earlier clock
   read would let a Hold pass the window check at one instant and be stamped
   `CreatedAt` at a later one — the sub-second version of the very bug this
   closes.
+
+  The announcement *row* is read just before the transaction opens, not inside
+  it. Only the clock read and `SaleWindowRules.StateOf` are under the seat lock.
+  That split is safe because the row is insert-only — written once by the
+  announcement's consumer and never updated — so there is no write for the lock
+  to order this read against, and the only staleness available to it is not
+  having heard an announcement that landed microseconds ago. That direction
+  over-refuses, which is the direction this ADR already accepts everywhere else.
+  Reading it inside would spend a round trip while holding locks to buy nothing.
 
 - **Confirm is not gated, on purpose.** A Hold granted inside the window still
   confirms after the window closes. The Hold *is* the claim on the flash price,
@@ -91,10 +100,18 @@ exists, only whether it has heard this Flight's sale open.
   is already refused once a sale has been announced. A fresh clone never meets
   this: Ordering consumes from the first crossing onward.
 
-- **Catalog and Ordering must agree on the boundary.** Both treat the window as
-  inclusive at the start and exclusive at the end — at the instant it closes the
-  sale is Ended and a Hold is refused — matching `FlightCatalogService.StateOf`
-  and the SPA's `saleStateAt`. A change to one belongs in the others.
+- **Catalog and Ordering must agree on the end boundary.** Both treat the close
+  as exclusive — at the instant it arrives the sale is Ended and a Hold is
+  refused — matching `FlightCatalogService.StateOf` and the SPA's `saleStateAt`.
+  A change to one belongs in the others.
+
+  The *start* boundary is Catalog's alone. `SaleWindowRules.StateOf` compares
+  against `SaleEndsAt` and nothing else: Ordering never learns `SaleStartsAt`,
+  and carries the opening only as whether a row exists at all, since Catalog
+  announces a crossing once `SaleStartsAt <= now` and not before. So Catalog's
+  inclusive start reaches Ordering as the arrival of the announcement rather
+  than as a comparison — which is the same rule one service later, and the
+  reason Ordering's refusal trails the bus.
 
 - **Ordering still references no Catalog code.** The window arrives as an event
   payload, so `OrderingBoundaryTests` stays true: Ordering cannot read Catalog's

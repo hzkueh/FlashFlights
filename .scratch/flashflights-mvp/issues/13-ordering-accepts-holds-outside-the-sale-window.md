@@ -107,12 +107,15 @@ Flights and cannot say whether one exists). The SPA turns it into its own
 `saleNotOpen` outcome and drops the whole selection rather than offering "pick
 different seats" — unlike a lost race, no other Seat would have fared better.
 
-**Where the check sits matters.** It runs inside the granting transaction against
-the same `clock.GetUtcNow()` that stamps the Hold, so a request cannot pass the
-window check at one instant and be granted as of a later one. The new concurrency
-test pins it: twenty parallel posts, each on its own Seat, while the clock steps
-across `SaleEndsAt` — exactly the ten inside the window win, and no Hold row
-exists with `CreatedAt >= SaleEndsAt`.
+**Where the check sits matters.** The judgement runs inside the granting
+transaction against the same `clock.GetUtcNow()` that stamps the Hold, so a
+request cannot pass the window check at one instant and be granted as of a later
+one. The announcement row itself is read just before the transaction opens — it
+is insert-only, so the seat lock has no write to order it against, and the only
+staleness on offer is over-refusing one that landed microseconds ago.
+The new concurrency test pins the boundary: twenty parallel posts, each on its
+own Seat, while the clock steps across `SaleEndsAt` — exactly the ten inside the
+window win, and no Hold row exists with `CreatedAt >= SaleEndsAt`.
 
 **One operational sharp edge, found while checking the running stack and written
 into ADR-0003.** Catalog marks each crossing announced, so a Flight it announced
