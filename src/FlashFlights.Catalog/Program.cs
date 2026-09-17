@@ -2,6 +2,8 @@ using FlashFlights.Catalog.Browsing;
 using FlashFlights.Catalog.Persistence;
 using FlashFlights.Catalog.Projection;
 using FlashFlights.Catalog.Sales;
+using FlashFlights.Catalog.Seeding;
+using FlashFlights.DemoData;
 using FlashFlights.ServiceDefaults;
 using FlashFlights.ServiceDefaults.DataStores;
 using MassTransit;
@@ -12,6 +14,12 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddFlashFlightsDataStore<CatalogDbContext>(
     "catalog-sqlite",
     options => options.UseSqlite(builder.Configuration.RequireConnectionString("CatalogDb")));
+
+// A fresh clone comes up with a catalog in it: five Flights spanning upcoming,
+// live, and ended sales, seeded once and left alone on every restart after
+// (ticket 11). There is no flight-authoring UI to fill it any other way
+// (CONTEXT.md), so without this the list page is empty until a test runs.
+builder.AddFlashFlightsDemoSeed<CatalogDemoSeeder>();
 
 // The three consumers that keep the SeatCounts projection fresh from Ordering's
 // movements. Registered on the bus here; each gets its own prefixed queue.

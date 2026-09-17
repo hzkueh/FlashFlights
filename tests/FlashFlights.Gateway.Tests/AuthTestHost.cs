@@ -138,6 +138,13 @@ internal sealed class AuthTestServer(WebApplication app, HttpClient client, Sqli
 {
     public HttpClient Client { get; } = client;
 
+    /// <summary>
+    /// The host's own container, for the things that run beside the request
+    /// pipeline rather than in it — the demo seed, which uses UserManager the
+    /// same way a registration does.
+    /// </summary>
+    public IServiceProvider Services => app.Services;
+
     public async ValueTask DisposeAsync()
     {
         Client.Dispose();

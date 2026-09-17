@@ -1,6 +1,8 @@
 using System.Text.Json.Serialization;
+using FlashFlights.DemoData;
 using FlashFlights.Notifications.Persistence;
 using FlashFlights.Notifications.SeatMaps;
+using FlashFlights.Notifications.Seeding;
 using FlashFlights.Notifications.Watching;
 using FlashFlights.ServiceDefaults;
 using FlashFlights.ServiceDefaults.DataStores;
@@ -13,6 +15,11 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddFlashFlightsDataStore<NotificationsDbContext>(
     "notifications-sqlite",
     options => options.UseSqlite(builder.Configuration.RequireConnectionString("NotificationsDb")));
+
+// Watches a demo buyer is already holding and the alerts the ones that fired
+// left behind, so the inbox is not empty on a first look — and so the Flight
+// whose sale opens moments from now has somebody waiting on it (ticket 11).
+builder.AddFlashFlightsDemoSeed<NotificationsDemoSeeder>();
 
 builder.Services.AddSingleton<IPingLog, InMemoryPingLog>();
 

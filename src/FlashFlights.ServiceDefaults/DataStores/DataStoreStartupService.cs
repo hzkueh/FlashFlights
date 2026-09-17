@@ -5,14 +5,24 @@ using Microsoft.Extensions.Options;
 namespace FlashFlights.ServiceDefaults.DataStores;
 
 /// <summary>
-/// Applies the service's migrations on startup, retrying with capped
-/// exponential backoff instead of letting the process crash-loop when the
-/// container starts before its database does. Never throws: the service stays
-/// up, and <see cref="DataStoreHealthCheck"/> reports it not-ready until the
-/// schema is in place.
+/// Brings the service's store up on startup — migrations first, then whatever
+/// seeding it registered — retrying with capped exponential backoff instead of
+/// letting the process crash-loop when the container starts before its database
+/// does. Never throws: the service stays up, and
+/// <see cref="DataStoreHealthCheck"/> reports it not-ready until the store is in
+/// place.
+///
+/// <para>
+/// Seeding runs inside the same attempt as the migration and before readiness is
+/// marked, so a store is never served while it is migrated but still empty, and a
+/// seeder that fails is retried with the same backoff as a database that is not
+/// up yet. Both halves must therefore tolerate being run again — see
+/// <see cref="IDataStoreSeeder"/>.
+/// </para>
 /// </summary>
 public sealed class DataStoreStartupService(
     IDataStoreMigrator migrator,
+    IEnumerable<IDataStoreSeeder> seeders,
     DataStoreReadiness readiness,
     IOptions<DataStoreRetryOptions> options,
     ILogger<DataStoreStartupService> logger) : BackgroundService
@@ -27,6 +37,7 @@ public sealed class DataStoreStartupService(
             try
             {
                 await migrator.MigrateAsync(stoppingToken);
+                await SeedAsync(stoppingToken);
                 readiness.MarkSchemaReady();
                 logger.LogInformation(
                     "Datastore {DataStore} migrated after {Attempts} attempt(s)", migrator.Name, attempt);
@@ -56,6 +67,22 @@ public sealed class DataStoreStartupService(
             }
 
             delay = delay >= retry.MaxDelay ? retry.MaxDelay : TimeSpan.FromTicks(Math.Min(delay.Ticks * 2, retry.MaxDelay.Ticks));
+        }
+    }
+
+    private async Task SeedAsync(CancellationToken stoppingToken)
+    {
+        foreach (var seeder in seeders)
+        {
+            // Left to throw: a failed seed must not be mistaken for an empty
+            // store, so the attempt is abandoned and retried rather than the
+            // service reporting ready with half a world in it.
+            var seeded = await seeder.SeedAsync(stoppingToken);
+
+            if (seeded)
+            {
+                logger.LogInformation("Datastore {DataStore} seeded by {Seeder}.", migrator.Name, seeder.Name);
+            }
         }
     }
 }

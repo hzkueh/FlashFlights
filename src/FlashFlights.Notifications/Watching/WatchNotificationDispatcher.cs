@@ -169,5 +169,5 @@ public sealed class WatchNotificationDispatcher(
     /// travel on the event.
     /// </summary>
     private static string BodyFor(FlightSaleStarted announcement) =>
-        $"{announcement.FlightNumber} {announcement.Origin} to {announcement.Destination} is now on sale";
+        SaleStartedNotification.Body(announcement.FlightNumber, announcement.Origin, announcement.Destination);
 }

@@ -11,6 +11,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\FlashFlights.DemoData\FlashFlights.DemoData.csproj" />
     <ProjectReference Include="..\FlashFlights.ServiceDefaults\FlashFlights.ServiceDefaults.csproj" />
   </ItemGroup>
 

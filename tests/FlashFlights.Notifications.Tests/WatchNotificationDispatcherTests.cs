@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using FlashFlights.Contracts;
 using FlashFlights.Notifications.Watching;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -217,32 +216,4 @@ public class WatchNotificationDispatcherTests
 
     private static WatchService WatchServiceFor(NotificationsTestDb testDb) =>
         new(testDb.NewContext(), new FixedClock(Now));
-
-    private sealed class RecordingNotificationPusher : INotificationPusher
-    {
-        private readonly ConcurrentQueue<(Guid UserId, NotificationView Notification)> _pushes = new();
-
-        public bool FailEveryPush { get; init; }
-
-        public IReadOnlyCollection<(Guid UserId, NotificationView Notification)> Pushes => _pushes;
-
-        public Task NotificationCreatedAsync(
-            Guid userId,
-            NotificationView notification,
-            CancellationToken cancellationToken = default)
-        {
-            if (FailEveryPush)
-            {
-                return Task.FromException(new InvalidOperationException("No hub here."));
-            }
-
-            _pushes.Enqueue((userId, notification));
-            return Task.CompletedTask;
-        }
-    }
-
-    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
-    {
-        public override DateTimeOffset GetUtcNow() => now;
-    }
 }

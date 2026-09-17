@@ -88,8 +88,17 @@ _Avoid: Message_
 
 **User**:
 An authenticated buyer. The only actor in the system — there is no separate
-admin role; flights are seeded, not authored in-app.
-_Avoid: Customer, Account_
+admin role; flights are seeded, not authored in-app, and so are the demo Users
+a fresh clone comes up with. Seeded history includes Holds and Bookings whose
+UserId belongs to no User at all — the other passengers who filled a nearly
+sold-out cabin, and nobody a reviewer can sign in as. That is only possible
+because a UserId is a cross-service reference and never an FK (ADR-0001), and
+it is deliberate: giving them accounts would mean either thirty sign-ins
+nobody wants or one buyer improbably booking the same Flight eight times. See
+[ADR-0004](docs/adr/0004-one-demo-world-seeded-by-each-service-into-its-own-store.md).
+_Avoid: Customer, Account, Passenger (a seeded buyer with no account is still a
+buyer; the word appears only in the demo seed, which is fixture rather than
+domain)_
 
 ## Out of scope (deliberately)
 

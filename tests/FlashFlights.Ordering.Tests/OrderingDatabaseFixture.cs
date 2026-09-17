@@ -1,5 +1,6 @@
 using FlashFlights.Ordering.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using Testcontainers.PostgreSql;
 
 namespace FlashFlights.Ordering.Tests;
@@ -42,6 +43,50 @@ public sealed class OrderingDatabaseFixture : IAsyncLifetime
         new(new DbContextOptionsBuilder<OrderingDbContext>()
             .UseNpgsql(ConnectionString)
             .Options);
+
+    /// <summary>
+    /// A migrated database of its own on the same container, and a factory for
+    /// contexts on it.
+    ///
+    /// <para>
+    /// The exception to "tests share the container but not data". That works
+    /// because every other test here scopes itself to Seats it created under
+    /// fresh Guids — but the demo seeder's question is about the whole store
+    /// ("has anything been seeded here?"), which no amount of fresh Guids can
+    /// isolate. So those tests get an empty store rather than a private corner
+    /// of a shared one.
+    /// </para>
+    /// </summary>
+    public async Task<Func<OrderingDbContext>> NewEmptyStoreAsync()
+    {
+        var databaseName = $"ordering_{Guid.NewGuid():N}";
+
+        await using (var admin = new NpgsqlConnection(ConnectionString))
+        {
+            await admin.OpenAsync();
+
+            // Not parameterisable: CREATE DATABASE takes an identifier, not a
+            // value. The name is a Guid this method generated, so there is
+            // nothing here an input could reach.
+            await using var create = new NpgsqlCommand($"CREATE DATABASE \"{databaseName}\"", admin);
+            await create.ExecuteNonQueryAsync();
+        }
+
+        var connectionString = new NpgsqlConnectionStringBuilder(ConnectionString)
+        {
+            Database = databaseName,
+        }.ConnectionString;
+
+        OrderingDbContext NewContext() =>
+            new(new DbContextOptionsBuilder<OrderingDbContext>().UseNpgsql(connectionString).Options);
+
+        await using (var db = NewContext())
+        {
+            await db.Database.MigrateAsync();
+        }
+
+        return NewContext;
+    }
 }
 
 /// <summary>Binds the fixture to every integration test class that needs the database.</summary>

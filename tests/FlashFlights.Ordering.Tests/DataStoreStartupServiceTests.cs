@@ -110,6 +110,68 @@ public class DataStoreStartupServiceTests
         Assert.Equal(HealthStatus.Unhealthy, (await CheckHealthAsync(probe, readiness)).Status);
     }
 
+    /// <summary>
+    /// Seeding a store that has no tables yet fails, so the order is not a
+    /// preference — it is the only order that works.
+    /// </summary>
+    [Fact]
+    public async Task Seeds_only_after_the_schema_is_in_place()
+    {
+        var migrator = new FlakyMigrator(failuresBeforeSuccess: 2);
+        var seeder = new RecordingSeeder();
+
+        await RunToCompletionAsync(migrator, new DataStoreReadiness(), seeder);
+
+        // Three migration attempts and one seed: a seeder that ran first would
+        // have been called on each of the two that failed.
+        Assert.Equal(3, migrator.Attempts);
+        Assert.Equal(1, seeder.Runs);
+    }
+
+    /// <summary>
+    /// The window this closes is the seeding twin of the unmigrated one: a
+    /// catalog that is migrated but still empty reads as a system with no
+    /// flights, which is worse than one that is honestly not ready yet.
+    /// </summary>
+    [Fact]
+    public async Task Stays_not_ready_while_the_seed_keeps_failing()
+    {
+        var readiness = new DataStoreReadiness();
+        var seeder = new RecordingSeeder { FailuresBeforeSuccess = int.MaxValue };
+
+        var service = BuildService(new FlakyMigrator(failuresBeforeSuccess: 0), readiness, seeder);
+        await service.StartAsync(CancellationToken.None);
+
+        await WaitUntilAsync(() => seeder.Runs >= 3);
+
+        Assert.False(readiness.SchemaReady);
+
+        await service.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Retries_a_failed_seed_rather_than_giving_up_on_it()
+    {
+        var readiness = new DataStoreReadiness();
+        var seeder = new RecordingSeeder { FailuresBeforeSuccess = 2 };
+
+        await RunToCompletionAsync(new FlakyMigrator(failuresBeforeSuccess: 0), readiness, seeder);
+
+        Assert.Equal(3, seeder.Runs);
+        Assert.True(readiness.SchemaReady);
+    }
+
+    /// <summary>A service that registers no seeder is unaffected by any of this.</summary>
+    [Fact]
+    public async Task Comes_up_as_before_when_nothing_is_registered_to_seed()
+    {
+        var readiness = new DataStoreReadiness();
+
+        await RunToCompletionAsync(new FlakyMigrator(failuresBeforeSuccess: 0), readiness);
+
+        Assert.True(readiness.SchemaReady);
+    }
+
     private static DataStoreReadiness MigratedReadiness()
     {
         var readiness = new DataStoreReadiness();
@@ -118,9 +180,12 @@ public class DataStoreStartupServiceTests
         return readiness;
     }
 
-    private static async Task RunToCompletionAsync(IDataStoreMigrator migrator, DataStoreReadiness readiness)
+    private static async Task RunToCompletionAsync(
+        IDataStoreMigrator migrator,
+        DataStoreReadiness readiness,
+        params IDataStoreSeeder[] seeders)
     {
-        var service = BuildService(migrator, readiness);
+        var service = BuildService(migrator, readiness, seeders);
 
         await service.StartAsync(CancellationToken.None);
         await service.ExecuteTask!.WaitAsync(TestTimeout);
@@ -150,8 +215,9 @@ public class DataStoreStartupServiceTests
 
     private static DataStoreStartupService BuildService(
         IDataStoreMigrator migrator,
-        DataStoreReadiness readiness) =>
-        new(migrator, readiness, FastRetry, NullLogger<DataStoreStartupService>.Instance);
+        DataStoreReadiness readiness,
+        params IDataStoreSeeder[] seeders) =>
+        new(migrator, seeders, readiness, FastRetry, NullLogger<DataStoreStartupService>.Instance);
 
     private sealed class FlakyMigrator(int failuresBeforeSuccess) : IDataStoreMigrator
     {
@@ -168,6 +234,27 @@ public class DataStoreStartupServiceTests
             return attempt <= failuresBeforeSuccess
                 ? Task.FromException(new InvalidOperationException("still down"))
                 : Task.CompletedTask;
+        }
+    }
+
+    /// <summary>A seeder that counts its runs and can be told to fail the first few.</summary>
+    private sealed class RecordingSeeder : IDataStoreSeeder
+    {
+        private int _runs;
+
+        public int Runs => _runs;
+
+        public int FailuresBeforeSuccess { get; init; }
+
+        public string Name => "fake-seed";
+
+        public Task<bool> SeedAsync(CancellationToken cancellationToken)
+        {
+            var run = Interlocked.Increment(ref _runs);
+
+            return run <= FailuresBeforeSuccess
+                ? Task.FromException<bool>(new InvalidOperationException("seed failed"))
+                : Task.FromResult(true);
         }
     }
 

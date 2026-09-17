@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\FlashFlights.ServiceDefaults\FlashFlights.ServiceDefaults.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -180,9 +180,4 @@ public class SaleStartAnnouncerTests
             return Task.CompletedTask;
         }
     }
-
-    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
-    {
-        public override DateTimeOffset GetUtcNow() => now;
-    }
 }

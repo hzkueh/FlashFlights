@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\FlashFlights.Contracts\FlashFlights.Contracts.csproj" />
+    <ProjectReference Include="..\FlashFlights.DemoData\FlashFlights.DemoData.csproj" />
     <ProjectReference Include="..\FlashFlights.ServiceDefaults\FlashFlights.ServiceDefaults.csproj" />
   </ItemGroup>
 
