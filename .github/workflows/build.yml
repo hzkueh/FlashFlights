@@ -1,0 +1,86 @@
+# Every pull request into main builds and tests both halves of the repo.
+#
+# Two jobs rather than one, because they share nothing and fail for unrelated
+# reasons: a broken SPA test should not hide the state of the backend suite, and
+# reading which of the two is red is the first thing anyone wants from a failed
+# run.
+name: build
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# A second push to the same branch makes the first run's answer irrelevant, so
+# stop paying for it. Never cancels a run on main — those are the ones that say
+# what is actually released.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: services
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          # Matches the SDK the Dockerfile builds with and the net10.0 target in
+          # Directory.Build.props.
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore FlashFlights.slnx
+
+      - name: Build
+        run: dotnet build FlashFlights.slnx --configuration Release --no-restore
+
+      # Runs the Ordering suite for real: its fixture starts a throwaway
+      # postgres:17-alpine through Testcontainers, against the Docker daemon
+      # ubuntu-latest already has. That matters more here than anywhere else —
+      # the no-double-hold guarantee is about row-level locking, and a run that
+      # skipped these would be green while proving nothing (ADR-0001).
+      - name: Test
+        run: dotnet test FlashFlights.slnx --configuration Release --no-build
+
+  web:
+    name: spa
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Matches web/Dockerfile's build stage.
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      # Last, and not merely `npm run typecheck`: `build` is `tsc -b && vite
+      # build`, so it type-checks and then proves the bundle the web image
+      # actually serves still comes out.
+      - name: Build
+        run: npm run build
