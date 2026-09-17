@@ -1,5 +1,18 @@
 """Seed demo flights for MANUAL / live testing of the running stack.
 
+SUPERSEDED by ticket 11: the app now seeds itself on first startup, from one
+declarative demo world each service projects into its own store (ADR-0004). DO
+NOT run this against a stack built from `main` — it wipes Catalog's Flights and
+truncates Ordering's ledger, leaving two stores that disagree and a set of
+Flights whose crossings Catalog has already announced and will never announce
+again. `docker compose down -v && docker compose up` is how you get a fresh
+demo world now.
+
+Kept only for the gotchas in this docstring, which are about the stores
+themselves rather than about seeding, and which cost real debugging to find.
+
+Below is the original note, from when there was no runtime seed path:
+
 There is no runtime seed-data path in the app until ticket 11 — flights are
 otherwise only ever created by tests. So to click through the browse/seat-map
 pages (ticket 06) or checkout (ticket 07) against a live `docker compose up`

@@ -162,9 +162,4 @@ public class NotificationPushTests
             }
         }
     }
-
-    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
-    {
-        public override DateTimeOffset GetUtcNow() => now;
-    }
 }

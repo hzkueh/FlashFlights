@@ -133,9 +133,4 @@ public class FlightCatalogServiceTests
 
     private static FlightCatalogService ServiceFor(CatalogTestDb testDb) =>
         new(testDb.NewContext(), new FixedClock(Now));
-
-    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
-    {
-        public override DateTimeOffset GetUtcNow() => now;
-    }
 }

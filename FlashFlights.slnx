@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/FlashFlights.Catalog/FlashFlights.Catalog.csproj" />
     <Project Path="src/FlashFlights.Contracts/FlashFlights.Contracts.csproj" />
+    <Project Path="src/FlashFlights.DemoData/FlashFlights.DemoData.csproj" />
     <Project Path="src/FlashFlights.Gateway/FlashFlights.Gateway.csproj" />
     <Project Path="src/FlashFlights.Notifications/FlashFlights.Notifications.csproj" />
     <Project Path="src/FlashFlights.Ordering/FlashFlights.Ordering.csproj" />
@@ -9,6 +10,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/FlashFlights.Catalog.Tests/FlashFlights.Catalog.Tests.csproj" />
+    <Project Path="tests/FlashFlights.DemoData.Tests/FlashFlights.DemoData.Tests.csproj" />
     <Project Path="tests/FlashFlights.Gateway.Tests/FlashFlights.Gateway.Tests.csproj" />
     <Project Path="tests/FlashFlights.Notifications.Tests/FlashFlights.Notifications.Tests.csproj" />
     <Project Path="tests/FlashFlights.Ordering.Tests/FlashFlights.Ordering.Tests.csproj" />

@@ -103,9 +103,4 @@ public class WatchServiceTests
 
     private static WatchService ServiceFor(NotificationsTestDb testDb) =>
         new(testDb.NewContext(), new FixedClock(Now));
-
-    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
-    {
-        public override DateTimeOffset GetUtcNow() => now;
-    }
 }

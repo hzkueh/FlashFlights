@@ -1,4 +1,6 @@
+using FlashFlights.DemoData;
 using FlashFlights.Gateway.Identity;
+using FlashFlights.Gateway.Seeding;
 using FlashFlights.ServiceDefaults;
 using FlashFlights.ServiceDefaults.Authentication;
 using FlashFlights.ServiceDefaults.DataStores;
@@ -21,6 +23,12 @@ builder.AddFlashFlightsDataStore<FlashFlightsIdentityDbContext>(
 // store: the gateway is the only issuer in the system, and the services only
 // ever validate.
 builder.AddFlashFlightsIdentity();
+
+// The buyers the other three services have already seeded bookings, watches,
+// and alerts against — so signing in as one shows a populated account rather
+// than an empty one (ticket 11). Registered after Identity, which owns the
+// UserManager the seed creates them through.
+builder.AddFlashFlightsDemoSeed<IdentityDemoSeeder>();
 
 // And validation, which the gateway needs for /api/auth/me. Called here rather
 // than folded into the line above, so moving the user store elsewhere one day

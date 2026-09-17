@@ -1,8 +1,10 @@
+using FlashFlights.DemoData;
 using FlashFlights.Ordering.Bookings;
 using FlashFlights.Ordering.Holds;
 using FlashFlights.Ordering.Persistence;
 using FlashFlights.Ordering.Sales;
 using FlashFlights.Ordering.SeatMaps;
+using FlashFlights.Ordering.Seeding;
 using FlashFlights.ServiceDefaults;
 using FlashFlights.ServiceDefaults.DataStores;
 using FlashFlights.ServiceDefaults.Wiring;
@@ -16,6 +18,11 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddFlashFlightsDataStore<OrderingDbContext>(
     "ordering-postgres",
     options => options.UseNpgsql(builder.Configuration.RequireConnectionString("OrderingDb")));
+
+// The cabins those seeded Flights sell, and a ledger with Seats already held and
+// confirmed on them, so every seat-map state is on screen from the first look
+// (ticket 11).
+builder.AddFlashFlightsDemoSeed<OrderingDemoSeeder>();
 
 builder.Services.AddSingleton<IPingLog, InMemoryPingLog>();
 
