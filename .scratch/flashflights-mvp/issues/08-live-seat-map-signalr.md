@@ -12,7 +12,7 @@
 - [x] Clients subscribe per-flight — a viewer isn't pushed changes for flights they aren't looking at.
 - [x] The connection recovers after a drop, and the map re-syncs to true state on reconnect.
 - [x] A stale client never renders a Seat as takeable when it isn't — `Ordering` remains authoritative and rejects the request regardless.
-- [ ] **Record a rough two-window demo video as soon as this works.** Ticket 12 polishes it; do not leave creating it until then.
+- [x] **Record a rough two-window demo video as soon as this works.** Ticket 12 polishes it; do not leave creating it until then. _Closed by ticket 12 — see the note below._
 
 ## Notes
 
@@ -24,4 +24,19 @@ from — and their own Hold's countdown — repaint as other buyers act, without
 refetch. Live updates stay advisory; Ordering's locked grant is still the sole
 authority (ADR-0001), proved by the stale-client HTTP test.
 
-The two-window demo video is still owed.
+## Closing the demo-video item (ticket 12)
+
+The rough take this ticket asked for was never recorded as a video, and in the
+end nothing needed it: ticket 12 captured the finished artifact directly, as
+[`docs/media/live-seat-map.gif`](../../../docs/media/live-seat-map.gif) — two
+genuine viewers of FF104, a third buyer holding seat 2B and confirming it, both
+panels moving Available → Held → Confirmed with no refresh, including this
+ticket's own live-update path and ticket 10's "recently changed" ring.
+
+So the box is closed by the thing it existed to feed, not by the intermediate
+step. The one caveat, stated in the README too: the GIF is assembled from real
+paired captures rather than screen-recorded, so the two panels in a frame are
+shot back to back. The recording script this ticket wrote,
+[`artifacts/demo-two-window-script.md`](../artifacts/demo-two-window-script.md),
+is still the right basis for a polished OBS take if one is ever wanted — it is
+kept for that reason rather than as unfinished work.
