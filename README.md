@@ -19,7 +19,7 @@ was **demonstrated failing before it was made to pass** — see
 [the concurrency proof](#the-concurrency-proof-red-then-green), which is the
 single thing in this repo most worth your time.
 
-![Two browser windows showing the same flight's seat map. A seat changes from Available to Held to Confirmed in both windows at once, without a refresh.](docs/media/live-seat-map.gif)
+![Two viewers of the same flight's seat map, side by side. A seat changes from Available to Held to Confirmed in both of them, without either being refreshed.](docs/media/live-seat-map.gif)
 
 _Two independent viewers on one flight. A third buyer holds seat 2B and then
 confirms it; neither window is refreshed or clicked. Captured from the running
@@ -44,7 +44,9 @@ stack — see [how](#how-the-demo-media-was-captured)._
 
 ## Run it
 
-You need Docker. Nothing else.
+You need Docker. Nothing else. (On Windows, if the gateway cannot bind port
+8080, that is a known WinNAT reservation rather than anything about this repo —
+see [Troubleshooting](#troubleshooting) for the one-file workaround.)
 
 ```bash
 git clone https://github.com/hzkueh/FlashFlights.git
@@ -70,7 +72,7 @@ and there is no admin surface that could hand them any.
 
 | Sign in as                   | What they have                                       |
 | ---------------------------- | ---------------------------------------------------- |
-| `ada@flashflights.test`      | **Start here.** Two bookings, three watches, an inbox with one unread |
+| `ada@flashflights.test`      | **Start here.** Two bookings, three watches, two alerts with one unread |
 | `grace@flashflights.test`    | Two bookings, a live hold, and a watch                |
 | `alan@flashflights.test`     | A booking and two live holds                          |
 | `katherine@flashflights.test`| A booking, and a watch on the flight whose sale opens ~45s after the seed |
@@ -81,8 +83,11 @@ README is right for a laptop and wrong everywhere else.
 ### Things worth trying
 
 - **Watch a sale open live.** `FF507 DUB→KEF` opens about 45 seconds after the
-  stack first starts. Sign in as Katherine within that window and the
-  notification arrives pushed, not polled.
+  store is **first seeded**. Sign in as Katherine in that window and the alert
+  arrives pushed, not polled. That moment is stamped once and never re-armed —
+  restarting a stack that has been up longer will not bring it back, because
+  rewriting seeded rows on every restart is exactly what "idempotent across
+  restarts" forbids. To see it again: `docker compose down -v`, then up.
 - **See the counts and the map disagree, by design.** The list page's "4 of 72
   seats left" is a projection; the seat map reads live from Ordering. See
   [the ledger](#the-seatmovement-ledger).
@@ -311,6 +316,11 @@ dotnet run --project src/FlashFlights.Gateway --urls http://localhost:8080
 
 Open <http://localhost:8080> as before. Each service creates and seeds its own
 store on startup, so there is no migration step to remember.
+
+There is a third, lighter mode — SPA in Vite, everything else in Docker — along
+with the `VITE_GATEWAY_ORIGIN` override and the frontend scripts.
+[`web/README.md`](web/README.md) is the authority on all three; this section is
+only the backend half.
 
 ### Tests
 

@@ -44,7 +44,9 @@ here, so `channel: 'chrome'` does the work).
   `fullPage`, which paints a sticky header at its scroll offset — the first take
   had the nav bar floating through the middle of the seat map. Trailing uniform
   background is trimmed.
-- `live-seat-map.gif` — two genuine viewers on FF104, 17 frames over ~6s, 324 KB.
+- `live-seat-map.gif` — two genuine viewers on FF104, 324 KB, ~6.2s. 17 capture
+  pairs were taken; Pillow collapses the runs where nothing moved, so the file
+  stores 11 distinct frames with the durations summed.
   A third buyer holds seat 2B and then confirms it; both panels move through
   Available → Held → Confirmed, including the ticket-10 "recently changed" ring.
   The two panels in a frame are screenshotted back to back, not simultaneously;
@@ -75,8 +77,11 @@ project with its own empty volumes:
 Error response from daemon: ports are not available: exposing port TCP 0.0.0.0:8080 -> 127.0.0.1:0: listen tcp 0.0.0.0:8080: bind: An attempt was made to access a socket in a way forbidden by its access permissions.
 ```
 
-Windows has 8060–8159 in a WinNAT excluded port range here (`netsh int ipv4 show
-excludedportrange protocol=tcp`), so this is the machine, not the compose graph
+Windows had 8060–8159 in a WinNAT excluded port range at the time of this run
+(`netsh int ipv4 show excludedportrange protocol=tcp`). The exact bounds drift
+across reboots — the untracked override on this machine was written against
+8078–8177 — so read the range as "wherever WinNAT landed today", not a fixed
+fact. Either way this is the machine, not the compose graph
 — every other container started and the gateway came up fine once republished on
 9090 via the untracked override this repo already documents. The verification
 above ran with that override.
